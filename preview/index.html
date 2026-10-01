@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark light"><meta name="theme-color" content="#101416"><title>Neko · Design preview</title>
+  <link rel="stylesheet" href="style.css"><link rel="stylesheet" href="agent.css"><script defer src="app.js"></script>
+</head>
+<body>
+  <aside class="preview-controls">
+    <div class="brand"><span class="brand-mark">n.</span><span>Neko</span></div>
+    <h1>Your money.<br>A little clearer.</h1>
+    <p>Preview Neko's softly dimensional lucky-cat conversation and browse the other app screens. All amounts and connections here are sample data.</p>
+    <label for="screen-select">Preview a screen</label>
+    <select id="screen-select"><option value="home">Neko conversation</option><option value="ledger">Ledger</option><option value="agent">Activity</option><option value="insights">Insights</option><option value="splits">Splits</option><option value="settings">Settings</option><option value="login">Login</option><option value="byok">OpenRouter key setup</option></select>
+    <button id="theme-toggle" class="outline">Switch to light</button>
+    <p class="preview-note">The APK contains the real app. This preview does not connect to your bank, database, OpenRouter, or Splitwise.</p>
+  </aside>
+  <main class="phone" aria-label="Neko mobile design preview">
+    <div class="statusbar"><span>9:41</span><span>Design preview</span><span aria-label="Battery full">100%</span></div>
+    <div id="screen" class="screen"></div><nav id="nav" aria-label="Main navigation"></nav>
+  </main>
+  <dialog id="detail"><div id="detail-content"></div><button id="close-dialog" class="outline">Close</button></dialog>
+</body>
+</html>

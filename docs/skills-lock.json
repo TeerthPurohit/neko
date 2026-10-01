@@ -1,0 +1,615 @@
+{
+  "schema": 1,
+  "installed_on": "2026-10-01",
+  "installation_scope": "user",
+  "skill_root": "C:\\Users\\teert\\.codex\\skills",
+  "skills": [
+    {
+      "name": "interface-design",
+      "repository": "Dammyjay93/interface-design",
+      "revision": "2f9be3206855bcb2d1d0af262c8bae25cba6658d",
+      "source_path": ".claude/skills/interface-design",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\interface-design",
+      "skill_sha256": "720b31a31276e899fbe3006a33cbfeaceb77a73ba4c27b80d29afd38c8b7b208",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-backend-jpa-entity-mapping",
+      "repository": "Kotlin/kotlin-agent-skills",
+      "revision": "c2f90697bf71966a117a13340d5fff787f004140",
+      "source_path": "skills/kotlin-backend-jpa-entity-mapping",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-backend-jpa-entity-mapping",
+      "skill_sha256": "5d9c864a55c5ad29f54a807820672a9b5e0360ee33006c63a396a31bef0d8f4e",
+      "files_verified": 1,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-tooling-agp9-migration",
+      "repository": "Kotlin/kotlin-agent-skills",
+      "revision": "c2f90697bf71966a117a13340d5fff787f004140",
+      "source_path": "skills/kotlin-tooling-agp9-migration",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-tooling-agp9-migration",
+      "skill_sha256": "eec4224102bdea5779f7a181a4f3dc946efee5b7398b207c1467f1f84aeaa0a6",
+      "files_verified": 10,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-tooling-cocoapods-spm-migration",
+      "repository": "Kotlin/kotlin-agent-skills",
+      "revision": "c2f90697bf71966a117a13340d5fff787f004140",
+      "source_path": "skills/kotlin-tooling-cocoapods-spm-migration",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-tooling-cocoapods-spm-migration",
+      "skill_sha256": "06d75416ed876c18d950493a5aefe6ef5dd5cb955ec0c1d6c1c45cac8ab839ca",
+      "files_verified": 6,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-tooling-gradle-to-kotlin-toolchain-plugin",
+      "repository": "Kotlin/kotlin-agent-skills",
+      "revision": "c2f90697bf71966a117a13340d5fff787f004140",
+      "source_path": "skills/kotlin-tooling-gradle-to-kotlin-toolchain-plugin",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-tooling-gradle-to-kotlin-toolchain-plugin",
+      "skill_sha256": "dd76f4da8ea636a3cead5a77726df0d7543ce020b45802fc97db48bc253b11d0",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-tooling-gradle-to-kotlin-toolchain-project",
+      "repository": "Kotlin/kotlin-agent-skills",
+      "revision": "c2f90697bf71966a117a13340d5fff787f004140",
+      "source_path": "skills/kotlin-tooling-gradle-to-kotlin-toolchain-project",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-tooling-gradle-to-kotlin-toolchain-project",
+      "skill_sha256": "46e0412c3938d03da9311a50f3c29c30ce7f203ab14c2a76b1dd335219bf73b3",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-tooling-immutable-collections-0-5-x-migration",
+      "repository": "Kotlin/kotlin-agent-skills",
+      "revision": "c2f90697bf71966a117a13340d5fff787f004140",
+      "source_path": "skills/kotlin-tooling-immutable-collections-0-5-x-migration",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-tooling-immutable-collections-0-5-x-migration",
+      "skill_sha256": "7b161da34a28fc5a6855b6e1b6c1749fbc754eaa29b911ec0cc8bb532b0c9d26",
+      "files_verified": 1,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-tooling-java-to-kotlin",
+      "repository": "Kotlin/kotlin-agent-skills",
+      "revision": "c2f90697bf71966a117a13340d5fff787f004140",
+      "source_path": "skills/kotlin-tooling-java-to-kotlin",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-tooling-java-to-kotlin",
+      "skill_sha256": "5b372715adac4df37e3261040ead2d0c937a5e06a55178fa5ff0fcc95adc1944",
+      "files_verified": 16,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-tooling-kotlin-toolchain",
+      "repository": "Kotlin/kotlin-agent-skills",
+      "revision": "c2f90697bf71966a117a13340d5fff787f004140",
+      "source_path": "skills/kotlin-tooling-kotlin-toolchain",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-tooling-kotlin-toolchain",
+      "skill_sha256": "2cec94b6eb346999c7d4d74079131ce12d1ae944c20cf95b8119fac604dd3dfe",
+      "files_verified": 4,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-tooling-kotlin-toolchain-plugin-authoring",
+      "repository": "Kotlin/kotlin-agent-skills",
+      "revision": "c2f90697bf71966a117a13340d5fff787f004140",
+      "source_path": "skills/kotlin-tooling-kotlin-toolchain-plugin-authoring",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-tooling-kotlin-toolchain-plugin-authoring",
+      "skill_sha256": "ff5cf4de344a0643ecca5679f4462431faf8d98436fbe16a885807cb46e773ef",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-tooling-native-build-performance",
+      "repository": "Kotlin/kotlin-agent-skills",
+      "revision": "c2f90697bf71966a117a13340d5fff787f004140",
+      "source_path": "skills/kotlin-tooling-native-build-performance",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-tooling-native-build-performance",
+      "skill_sha256": "948fcecafa9fd0dcd447682e1fef7046b542be710ee27c2f25eade31c182455e",
+      "files_verified": 7,
+      "nested_skills": []
+    },
+    {
+      "name": "compose-kotlin-agent-skills",
+      "repository": "haidrrrry/compose-kotlin-agent-skills",
+      "revision": "3851303e27882f02a75809dab1deeb7deecdf50c",
+      "source_path": ".",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\compose-kotlin-agent-skills",
+      "skill_sha256": "6e1ef34a2d233e22902f82b26bce6974978b2979dc10fcf9d4b855a9ccdb7e4e",
+      "files_verified": 85,
+      "nested_skills": [
+        "skills/android-kotlin-architecture/SKILL.md",
+        "skills/android-kotlin-compose/SKILL.md",
+        "skills/android-kotlin-testing/SKILL.md"
+      ]
+    },
+    {
+      "name": "ci-cd-containerization-advisor",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/ci-cd-containerization-advisor",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\ci-cd-containerization-advisor",
+      "skill_sha256": "13e23b965a20ea0a8be968d2b57a147c985b72b218cf8ba7355f497fa4a075d0",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "configuration-properties-profiles-kotlin-safe",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/configuration-properties-profiles-kotlin-safe",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\configuration-properties-profiles-kotlin-safe",
+      "skill_sha256": "762c6eb5eb1ef7b18df73cc2502a6fa019d15aa2255a3effc258a859d03ce620",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "dependency-conflict-resolver",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/dependency-conflict-resolver",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\dependency-conflict-resolver",
+      "skill_sha256": "8c841e3feb2a7317d40cc1b51aa35ddf46c7b54720e358b54b4d97903582e834",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "domain-decomposition-api-design-advisor",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/domain-decomposition-api-design-advisor",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\domain-decomposition-api-design-advisor",
+      "skill_sha256": "9716385c441d1bda30555ddcbd2793d25b5f3539462c3a9ce59ad9e8b94de9bd",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "error-model-validation-architect",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/error-model-validation-architect",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\error-model-validation-architect",
+      "skill_sha256": "a86245367143879c30fd6475a758b863d115086e0efaaacce2d82162d12f9a98",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "gradle-kotlin-dsl-doctor",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/gradle-kotlin-dsl-doctor",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\gradle-kotlin-dsl-doctor",
+      "skill_sha256": "b4cd477ece3cf205ab2890ff0415f5e24bc099809334c465bc32681c447d4f1a",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "integration-resilience-engineer",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/integration-resilience-engineer",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\integration-resilience-engineer",
+      "skill_sha256": "757ab79b32d1f359821a2a8e14832705a8270452f2ac99e714a0c7ede51da6e8",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "jackson-kotlin-serialization-specialist",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/jackson-kotlin-serialization-specialist",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\jackson-kotlin-serialization-specialist",
+      "skill_sha256": "953212099f1aa8b86e6abce8822e2b251d43a93d5798871633c9ab2ed4a1f623",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "java-kotlin-migration-assistant",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/java-kotlin-migration-assistant",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\java-kotlin-migration-assistant",
+      "skill_sha256": "1e2a76f0d6dd7a3d7e356bb2c23afaf1b96abc5f0fb75c3537e9f567418d0b26",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "jpa-spring-data-kotlin-mapper",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/jpa-spring-data-kotlin-mapper",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\jpa-spring-data-kotlin-mapper",
+      "skill_sha256": "1718550f0508150e4140e69442e4c26f8510a9104e4f06ea7f00f81b43a3e3aa",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-idiomatic-refactorer-spring-aware",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/kotlin-idiomatic-refactorer-spring-aware",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-idiomatic-refactorer-spring-aware",
+      "skill_sha256": "c04f0692e71f893e7c80d902d48c977219af4587bfd0c1add5a0fede766aef7d",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-spring-proxy-compatibility",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/kotlin-spring-proxy-compatibility",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-spring-proxy-compatibility",
+      "skill_sha256": "5433f00ed3dd64048ae29e23f8cdff37dd64c83121fbe7356b297ff66d47da09",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "observability-integrator",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/observability-integrator",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\observability-integrator",
+      "skill_sha256": "52dc9dba3824f41cfc43c0c616fb072922b5edc53721016e9510c1e910a41e47",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "performance-concurrency-advisor",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/performance-concurrency-advisor",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\performance-concurrency-advisor",
+      "skill_sha256": "7a5fd1120547234a23f4de137dbf9efff8809c206274a9f4eebfa6288c4941f4",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "production-incident-responder",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/production-incident-responder",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\production-incident-responder",
+      "skill_sha256": "298e113c7dea7dea119689d3e3eb8f3b52bd798264aa1d21c4e174ff8fdffc6a",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "project-context-ingestion",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/project-context-ingestion",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\project-context-ingestion",
+      "skill_sha256": "ec1519b13a0ae8a63119479f9d2d2572c938e92737e0367aa5cfef85cdb3a614",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "schema-migration-planner",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/schema-migration-planner",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\schema-migration-planner",
+      "skill_sha256": "c07950926ad0cbf9fc0b8530485b64d97e44638503d564e9feae42d0c12eac8a",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "spring-context-di-reasoning",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/spring-context-di-reasoning",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\spring-context-di-reasoning",
+      "skill_sha256": "603851b0ea8b17d0f469d8586c55b1025897d1fb1b7732813b06d690fde9bf78",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "spring-kotlin-code-review",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/spring-kotlin-code-review",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\spring-kotlin-code-review",
+      "skill_sha256": "d399626a7964e8de47bd5b91fe37713e5e73734c3e4fe88a9cbc63f7a480fa0f",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "spring-mvc-webflux-api-builder",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/spring-mvc-webflux-api-builder",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\spring-mvc-webflux-api-builder",
+      "skill_sha256": "b70a5b6cdfd1eda893cfef9fe4451de94ccab51d0e960f99738633ef100f986f",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "spring-security-configurator-auditor",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/spring-security-configurator-auditor",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\spring-security-configurator-auditor",
+      "skill_sha256": "c2437deacd206be2c7aedea0e3ed460b136f278b448d970c47e2d652bbfcc439",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "stacktrace-log-triage",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/stacktrace-log-triage",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\stacktrace-log-triage",
+      "skill_sha256": "47f18727779fb0df95e7d74822a3efd25616d082c21ad58e5c230f3af22a21c2",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "test-suite-builder",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/test-suite-builder",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\test-suite-builder",
+      "skill_sha256": "551f60a6a442ddfcac7fdf096e7db1d7498b59a9951b7ec8eb50d58234565aaa",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "transaction-consistency-designer",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/transaction-consistency-designer",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\transaction-consistency-designer",
+      "skill_sha256": "d40d18b60c8557695b9561fd621107544e3acf50a372e0f5ebb50ab9b58985dd",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "upgrade-breaking-change-navigator",
+      "repository": "yalishevant/kotlin-backend-agent-skills",
+      "revision": "fd0ed521d22efd28221d532c9abab97af0b9bf0e",
+      "source_path": ".agents/skills/upgrade-breaking-change-navigator",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\upgrade-breaking-change-navigator",
+      "skill_sha256": "fba8d9e25ed4ada7363b3b3eae22088768716eb28bc9bb2b032f8c719e4faf40",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "design-taste-frontend",
+      "repository": "Leonxlnx/taste-skill",
+      "revision": "ce26fc25c0e5e8cab638f883de62d9a86ee5e45b",
+      "source_path": "skills/taste-skill",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\design-taste-frontend",
+      "skill_sha256": "aa194351b246b8b4799099d4ed7b033d29eab6e6e3d58d8d2172978be7b3ec89",
+      "files_verified": 1,
+      "nested_skills": []
+    },
+    {
+      "name": "web-design-guidelines",
+      "repository": "vercel-labs/agent-skills",
+      "revision": "063bee94c3f4df8453406c830b0a7df0f2860278",
+      "source_path": "skills/web-design-guidelines",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\web-design-guidelines",
+      "skill_sha256": "f4647ca866a3accf763777f83e7682954f0187cd6bea7eea0399796652414e8f",
+      "files_verified": 1,
+      "nested_skills": []
+    },
+    {
+      "name": "vercel-react-native-skills",
+      "repository": "vercel-labs/agent-skills",
+      "revision": "063bee94c3f4df8453406c830b0a7df0f2860278",
+      "source_path": "skills/react-native-skills",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\vercel-react-native-skills",
+      "skill_sha256": "4012750a5ccbe064ca04af3835d5d1b011979d2d09d9b6df1c8128fac58e0a66",
+      "files_verified": 42,
+      "nested_skills": []
+    },
+    {
+      "name": "android-benchmark-comparison",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/android-benchmark-comparison",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\android-benchmark-comparison",
+      "skill_sha256": "f618d14afc7e1dbccb280c27f96803225f5d2a335e48d01e7d157788a6311050",
+      "files_verified": 1,
+      "nested_skills": []
+    },
+    {
+      "name": "compose-animations",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/compose-animations",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\compose-animations",
+      "skill_sha256": "eb94fc221017aad7c80b5414847379ac856b2f1c1363d1b67758701df2f5c217",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "compose-component-design",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/compose-component-design",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\compose-component-design",
+      "skill_sha256": "e9d2cb16ebef8fd3258062bb28525ff8a8fa8fbcffe91ad8c33be46c1f95f994",
+      "files_verified": 3,
+      "nested_skills": []
+    },
+    {
+      "name": "compose-focus-navigation",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/compose-focus-navigation",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\compose-focus-navigation",
+      "skill_sha256": "1dd608632e6914c0323d832a2c56a04932d9c677901187b7cd26ec70a46e6901",
+      "files_verified": 1,
+      "nested_skills": []
+    },
+    {
+      "name": "compose-performance",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/compose-performance",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\compose-performance",
+      "skill_sha256": "2e885a9685c1d3067124e3f88238ebe9946ab28e643c60febade01054d74cf7c",
+      "files_verified": 5,
+      "nested_skills": []
+    },
+    {
+      "name": "compose-state-and-effects",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/compose-state-and-effects",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\compose-state-and-effects",
+      "skill_sha256": "4686866e400709102a26366259fcc65152face063c2158e0bc0b75c11d4ce224",
+      "files_verified": 4,
+      "nested_skills": []
+    },
+    {
+      "name": "compose-ui-testing-patterns",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/compose-ui-testing-patterns",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\compose-ui-testing-patterns",
+      "skill_sha256": "262f59d9fff8552fe0b6dd2d279b726d8788516d7d368b8c08282729a40c60d8",
+      "files_verified": 2,
+      "nested_skills": []
+    },
+    {
+      "name": "deliver-spec",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/deliver-spec",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\deliver-spec",
+      "skill_sha256": "53d9bcac04e09af6ca1f2f99dccf63085b0f6acc42dd8e0b493e67d19f0a122e",
+      "files_verified": 3,
+      "nested_skills": []
+    },
+    {
+      "name": "gradle-run",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/gradle-run",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\gradle-run",
+      "skill_sha256": "b4fdb6de48dda4c3ede02721541fb343cfbc2a8f843a392db9bda45e4fac48db",
+      "files_verified": 5,
+      "nested_skills": []
+    },
+    {
+      "name": "grounded-writing",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/grounded-writing",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\grounded-writing",
+      "skill_sha256": "c019737d75da70f9040c9d27060217e5af8baff5a163948adbfc6b428a173056",
+      "files_verified": 3,
+      "nested_skills": []
+    },
+    {
+      "name": "implement-with-subagents",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/implement-with-subagents",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\implement-with-subagents",
+      "skill_sha256": "6efc4e252addbcab62cc7a276b872ea8e1477b2bc82591d5f60751e33efd45cd",
+      "files_verified": 4,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-api-design",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/kotlin-api-design",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-api-design",
+      "skill_sha256": "49bc11f02cdcba2c55ae7b02ec70450e18a532113f716de7f812db2a20bc50df",
+      "files_verified": 4,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-concurrency-and-flow",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/kotlin-concurrency-and-flow",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-concurrency-and-flow",
+      "skill_sha256": "904ff160cbe0a37b9a843fdac665085819333d6ec4271a304da1e9c0594252cd",
+      "files_verified": 3,
+      "nested_skills": []
+    },
+    {
+      "name": "kotlin-control-flow",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/kotlin-control-flow",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\kotlin-control-flow",
+      "skill_sha256": "5b23f483e50df986074115c7484c8a6d29aae147bc224b60f63f2516996348be",
+      "files_verified": 1,
+      "nested_skills": []
+    },
+    {
+      "name": "release-kotlin-library",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/release-kotlin-library",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\release-kotlin-library",
+      "skill_sha256": "56489b1da2b32946add27a522d6161d974ea79cbcfa56ddf6553fdbac195087f",
+      "files_verified": 7,
+      "nested_skills": []
+    },
+    {
+      "name": "run-github-project",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/run-github-project",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\run-github-project",
+      "skill_sha256": "4b53334962c470f68a04c93f407bdede2ca138265756ea3f8712a5eccfe302d7",
+      "files_verified": 20,
+      "nested_skills": []
+    },
+    {
+      "name": "shepherd",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/shepherd",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\shepherd",
+      "skill_sha256": "36ce2946ddf60455ea2ec24a5ef654695114eaa55f7f032e917cb3b5a15f45d1",
+      "files_verified": 4,
+      "nested_skills": []
+    },
+    {
+      "name": "to-plan",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/to-plan",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\to-plan",
+      "skill_sha256": "8fad334baefc46ff3b613a462524d33b4d34cd77a8e6e33074d728e45d07a372",
+      "files_verified": 6,
+      "nested_skills": []
+    },
+    {
+      "name": "using-chrisbanes-skills",
+      "repository": "chrisbanes/skills",
+      "revision": "ca44bf79ffa94ec1df15023789512e059c95ea89",
+      "source_path": "skills/using-chrisbanes-skills",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\using-chrisbanes-skills",
+      "skill_sha256": "bc966074087cc206537e4aa652b2081d3efa813bfb06b606c9b52a07c6ae90c1",
+      "files_verified": 1,
+      "nested_skills": []
+    },
+    {
+      "name": "mobile-android-design",
+      "repository": "wshobson/agents",
+      "revision": "156b7a5e7a8b93642628a339ee4039c925b34c7f",
+      "source_path": "plugins/ui-design/skills/mobile-android-design",
+      "installed_path": "C:\\Users\\teert\\.codex\\skills\\mobile-android-design",
+      "skill_sha256": "0a209a1c45585ce0056548cc2f0fd352b7fde5980a3b5dd397a9daf5dff19fe7",
+      "files_verified": 5,
+      "nested_skills": []
+    }
+  ],
+  "already_available": [
+    "impeccable"
+  ]
+}

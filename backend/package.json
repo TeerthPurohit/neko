@@ -1,0 +1,23 @@
+{
+  "name": "neko-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build && node --env-file=../.env dist/server.js",
+    "build": "esbuild src/server.ts src/migrate.ts --bundle --platform=node --format=esm --packages=external --outdir=dist",
+    "start": "node dist/server.js",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "node --env-file=../.env dist/migrate.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/pg": "^8.23.1",
+    "esbuild": "^0.28.2",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}

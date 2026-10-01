@@ -1,0 +1,41 @@
+.screen.agent-preview{display:flex;flex-direction:column;padding:8px 18px 96px;min-height:715px;height:715px;overflow:hidden}
+.agent-home{display:flex;flex-direction:column;flex:1;min-height:0}
+.agent-home .topbar{margin:0 0 3px;flex-shrink:0}
+.agent-home .topbar h2{font-size:27px;margin-top:1px}
+.agent-home .topbar p{font-size:11px}
+.agent-home .topbar .icon-button{border:1px solid var(--border)}
+.agent-status{display:flex;justify-content:center;min-height:22px;flex-shrink:0}
+.mascot-stage{height:208px;position:relative;display:grid;place-items:center;isolation:isolate;flex-shrink:0;margin:0 -7px}
+.mascot-shadow{position:absolute;z-index:0;bottom:10px;width:126px;height:15px;border-radius:50%;background:radial-gradient(ellipse,color-mix(in srgb,var(--accent) 25%,transparent),transparent 72%);filter:blur(4px)}
+.mascot-stage .cat{position:relative;z-index:1;width:auto;height:min(100%,220px);max-width:78%;object-fit:contain;filter:drop-shadow(0 9px 8px color-mix(in srgb,var(--accent) 17%,transparent));animation:mascot-idle 4.8s ease-in-out infinite}
+.mascot-stage.speaking .cat{animation:mascot-speak .42s cubic-bezier(.2,.7,.2,1) infinite alternate}
+@keyframes mascot-idle{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+@keyframes mascot-speak{from{transform:translateY(0) scale(1)}to{transform:translateY(-4px) scale(1.012)}}
+.chat-thread{flex:1;min-height:72px;overflow:auto;padding:0 2px;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.chat-thread .chat-bubble{font-size:14px;padding:13px 15px;margin:7px 0;max-width:92%;border-radius:22px;overflow-wrap:anywhere}
+.chat-thread .chat-bubble.neko{position:relative;background:var(--surface);border:1px solid color-mix(in srgb,var(--accent) 30%,var(--border));border-radius:20px 20px 20px 7px;box-shadow:0 6px 12px rgb(0 0 0 / .14)}
+.chat-thread .chat-bubble.neko::before{content:"";position:absolute;top:-7px;left:24px;width:12px;height:12px;background:var(--surface);border-top:1px solid color-mix(in srgb,var(--accent) 30%,var(--border));border-left:1px solid color-mix(in srgb,var(--accent) 30%,var(--border));transform:rotate(45deg)}
+.chat-thread .chat-bubble.user{position:relative;background:var(--tint);margin-left:auto;border-radius:20px 20px 7px 20px}
+.chat-thread .chat-bubble.user::after{content:"";position:absolute;right:15px;bottom:-5px;width:10px;height:10px;background:var(--tint);transform:rotate(45deg)}
+.bubble-pop{animation:bubble-pop .32s cubic-bezier(.2,.8,.2,1) both}
+@keyframes bubble-pop{from{opacity:0;transform:translateY(8px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.chat-thread .chat-bubble.typing{min-height:64px;display:flex;flex-direction:column;justify-content:center;gap:7px}
+.typing-dots{display:flex;gap:5px;padding:3px 0 1px}
+.typing-dots i{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:typing-dot .8s ease-in-out infinite alternate}
+.typing-dots i:nth-child(2){animation-delay:.14s}.typing-dots i:nth-child(3){animation-delay:.28s}
+@keyframes typing-dot{to{opacity:.28;transform:translateY(-3px)}}
+.chat-bubble small{display:block;font-size:10px;font-weight:700;letter-spacing:.09em;color:var(--accent);margin-bottom:5px}
+.chat-bubble.user{margin-left:auto}
+.welcome-bubble{max-width:100%!important}
+.suggestions{display:flex;gap:7px;overflow-x:auto;padding:3px 0 8px;scrollbar-width:none}
+.suggestions button{white-space:nowrap;min-height:42px;padding:9px 12px;font-size:11px;flex-shrink:0;background:var(--surface)}
+.agent-home .compose{flex-shrink:0;margin-top:6px;padding:0 1px;align-items:center}
+.agent-home .compose input{min-height:52px;border-radius:25px;background:var(--surface);border-color:var(--border);font-size:14px}
+.agent-home .compose button{width:50px;height:50px;padding:12px;border-radius:50%;flex-shrink:0}
+.preview-disclaimer{text-align:center;font-size:10px;color:var(--muted);line-height:1.35;margin:6px 5px 5px;flex-shrink:0}
+.agent-home .sample-label{margin:0 auto;font-size:9px;flex-shrink:0}
+.screen.agent-preview .topbar .icon{width:21px;height:21px}
+@media(max-width:900px){.screen.agent-preview{height:calc(100dvh - 125px);min-height:620px;padding:8px 18px 98px}.mascot-stage{height:min(26dvh,208px);min-height:150px}.agent-home{height:100%}.agent-home .compose{margin-bottom:0}}
+@media(max-height:700px){.screen.agent-preview{min-height:560px;height:calc(100dvh - 110px)}.mascot-stage{height:150px;min-height:150px}}
+@media(prefers-reduced-motion:reduce){.mascot-stage .cat,.typing-dots i,.bubble-pop{animation:none!important;transition:none!important}}
+.reduce-motion .mascot-stage .cat,.reduce-motion .typing-dots i,.reduce-motion .bubble-pop{animation:none!important;transition:none!important}
