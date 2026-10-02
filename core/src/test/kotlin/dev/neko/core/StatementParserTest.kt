@@ -87,6 +87,20 @@ Opening Balance 1,04,999.99
         val noOpening = "02/10/2026 POS 436612XXXXXX1234 SWIGGY 1,234.50 98,765.50\n03/10/2026 ACME PAYROLL 50,000.00 1,48,765.50"
         assertEquals(listOf(Direction.DEBIT, Direction.CREDIT), StatementParser.parse(noOpening).rows.map { it.direction })
     }
+    @Test fun `pdf rows with serial numbers and amounts wrapped onto a later line are read`() {
+        val text = """
+Sr No Date Narration Withdrawal Deposit Balance
+1 02/10/2026 UPI/612345678901/ZOMATO/ybl/Payment
+from Ph 1,234.50 98,765.50
+2 03/10/2026 NEFT-HDFCN52026-ACME CORP-SALARY
+50,000.00 1,48,765.50
+Page 1 of 1
+""".trim()
+        val rows = StatementParser.parse(text).rows
+        assertEquals(2, rows.size)
+        assertEquals(LocalDate.of(2026, 10, 2), rows[0].date); assertEquals(123_450L, rows[0].amountPaise); assertEquals(Direction.DEBIT, rows[0].direction)
+        assertEquals(Direction.CREDIT, rows[1].direction); assertEquals("ACME CORP", rows[1].merchant)
+    }
     @Test fun `a pdf row whose direction cannot be proven is reported not guessed`() {
         val parsed = StatementParser.parse("02/10/2026 MYSTERY ENTRY 777.00")
         assertEquals(0, parsed.rows.size); assertEquals(1, parsed.skipped)

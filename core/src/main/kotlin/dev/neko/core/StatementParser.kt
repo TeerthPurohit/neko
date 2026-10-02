@@ -137,37 +137,51 @@ object StatementParser {
     }
 
     // ---------- plain text (PDF) ----------
-    private val lineStart = Regex("^\\s*(\\d{1,2}[/\\-. ](?:\\d{1,2}|[A-Za-z]{3,4})[/\\-. ]\\d{2,4})\\b(.*)$")
+    // A row may start with a serial number ("12  02/10/2026 ...").
+    private val lineStart = Regex("^\\s*(?:\\d{1,4}[.)]?\\s+)?(\\d{1,2}[/\\-. ](?:\\d{1,2}|[A-Za-z]{3,4})[/\\-. ]\\d{2,4})\\b(.*)$")
     private val moneyToken = Regex("(?<![\\w.])-?\\d[\\d,]*\\.\\d{2}(?!\\d)(?:\\s?(?:Dr|Cr)\\b)?", RegexOption.IGNORE_CASE)
     private val openingLine = Regex("opening balance|balance b/?f|brought forward", RegexOption.IGNORE_CASE)
     private val noiseLine = Regex("page|statement|opening|closing|total|date|balance|ifsc|branch|customer", RegexOption.IGNORE_CASE)
     // "credit" alone is deliberately absent: "CREDIT CARD BILL PAY" is money going out.
     private val creditWords = Regex("credited|received|salary|refund|interest|deposit|reversal|cashback|inward|by transfer|\\bcr\\b", RegexOption.IGNORE_CASE)
     private val debitWords = Regex("debited|paid|payment|purchase|withdraw|\\batm\\b|\\bpos\\b|upi/dr|\\bdr\\b|\\bbill|charges|\\bfee", RegexOption.IGNORE_CASE)
+    private val leadingDate = Regex("^\\d{1,2}[/\\-. ](?:\\d{1,2}|[A-Za-z]{3,4})[/\\-. ]\\d{2,4}\\s+")
 
     private class Entry(val date: LocalDate, val description: StringBuilder, val amount: Amount, val balance: Long?)
+    private class Waiting(val date: LocalDate, val text: StringBuilder, var lines: Int = 0)
 
     private fun parseLines(text: String): StatementParse {
-        val entries = ArrayList<Entry>(); var skipped = 0; var opening: Long? = null
+        val entries = ArrayList<Entry>(); var skipped = 0; var opening: Long? = null; var waiting: Waiting? = null
+        // Returns false when the text has no amounts yet (the row's numbers may be on a following line).
+        fun add(date: LocalDate, rest: String): Boolean {
+            val tokens = moneyToken.findAll(rest).toList()
+            if (tokens.isEmpty()) return false
+            val amountToken = if (tokens.size >= 2) tokens[tokens.size - 2] else tokens[0]
+            val amount = amountOf(amountToken.value)
+            if (amount == null) { skipped++; return true }
+            val balance = if (tokens.size >= 2) amountOf(tokens.last().value)?.paise else null
+            entries += Entry(date, StringBuilder(rest.substring(0, amountToken.range.first).trim().replace(leadingDate, "")), amount, balance)
+            return true
+        }
         for (line in text.lines()) {
             if (line.isBlank()) continue
             if (openingLine.containsMatchIn(line)) { moneyToken.findAll(line).lastOrNull()?.let { amountOf(it.value)?.let { a -> opening = a.paise } }; continue }
             val start = lineStart.matchEntire(line)
             val date = start?.let { parseDate(it.groupValues[1]) }
             if (start == null || date == null) {
-                if (entries.isNotEmpty() && !moneyToken.containsMatchIn(line) && !noiseLine.containsMatchIn(line)) entries.last().description.append(' ').append(line.trim())
+                val w = waiting
+                if (w != null) {
+                    // Some statements wrap a row so the amounts land on a later line; collect up to three more lines for it.
+                    w.text.append(' ').append(line.trim()); w.lines++
+                    if (add(w.date, w.text.toString())) waiting = null else if (w.lines >= 3) { skipped++; waiting = null }
+                } else if (entries.isNotEmpty() && !moneyToken.containsMatchIn(line) && !noiseLine.containsMatchIn(line)) entries.last().description.append(' ').append(line.trim())
                 continue
             }
+            if (waiting != null) { skipped++; waiting = null }
             val rest = start.groupValues[2]
-            val tokens = moneyToken.findAll(rest).toList()
-            if (tokens.isEmpty()) continue
-            val amountToken = if (tokens.size >= 2) tokens[tokens.size - 2] else tokens[0]
-            val amount = amountOf(amountToken.value)
-            if (amount == null) { skipped++; continue }
-            val balance = if (tokens.size >= 2) amountOf(tokens.last().value)?.paise else null
-            val description = rest.substring(0, amountToken.range.first).trim().replace(Regex("^\\d{1,2}[/\\-. ](?:\\d{1,2}|[A-Za-z]{3,4})[/\\-. ]\\d{2,4}\\s+"), "")
-            entries += Entry(date, StringBuilder(description), amount, balance)
+            if (!add(date, rest)) waiting = Waiting(date, StringBuilder(rest.trim()))
         }
+        if (waiting != null) skipped++
         // Statements list either oldest first or newest first. Whichever order makes the balances chain tells which way to read them.
         fun chains(newer: Entry, older: Entry): Boolean {
             val a = newer.balance ?: return false; val b = older.balance ?: return false

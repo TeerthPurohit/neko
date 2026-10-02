@@ -14,8 +14,8 @@ android {
         applicationId = "dev.neko.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.3.0"
+        versionCode = 8
+        versionName = "0.3.1"
         val backendUrl = rootProject.file(".env").takeIf { it.exists() }?.readLines()?.firstOrNull { it.startsWith("NEKO_BACKEND_URL=") }?.substringAfter('=')?.trim().orEmpty()
         buildConfigField("String", "DEFAULT_BACKEND_URL", "\"" + backendUrl.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
     }
@@ -40,6 +40,8 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.5")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Google's built-in QR scanner for UPI payments: no camera permission needed, nothing is uploaded.
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     // Reads the text of PDF bank statements on the phone; nothing is uploaded.
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("com.google.firebase:firebase-messaging:24.1.2")

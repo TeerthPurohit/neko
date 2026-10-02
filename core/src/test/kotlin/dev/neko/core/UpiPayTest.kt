@@ -12,6 +12,19 @@ class UpiPayTest {
         assertEquals("upi://pay?pa=friend%40okicici&pn=Ravi%20%26%20Sons&am=1234.50&cu=INR&tn=Dinner%20%232", link)
         assertEquals("upi://pay?pa=ab%40ybl&pn=ab%40ybl&am=10.00&cu=INR", UpiPay.link("ab@ybl", "", 1000, ""))
     }
+    @Test fun `reads a scanned merchant or personal qr code`() {
+        val parsed = UpiPay.parseLink("upi://pay?pa=ravi%40okicici&pn=Ravi%20Kumar&am=250.00&cu=INR&tn=Dinner&mc=5411&tr=T123&junk=1")!!
+        assertEquals("ravi@okicici", parsed.vpa); assertEquals("Ravi Kumar", parsed.name); assertEquals(25_000L, parsed.amountPaise); assertEquals("Dinner", parsed.note)
+        assertEquals(mapOf("mc" to "5411", "tr" to "T123"), parsed.extras, "only known merchant fields are kept")
+        assertNull(UpiPay.parseLink("upi://pay?pa=ravi%40okicici")!!.amountPaise, "an open-amount code leaves the amount to the user")
+        assertEquals("shop@ybl", UpiPay.parseLink("UPI://pay?pa=shop@ybl&pn=Shop")!!.vpa)
+    }
+    @Test fun `rejects links that are not safe upi payments`() {
+        listOf("https://example.com/pay?pa=a@ybl", "upi://mandate?pa=ab@ybl", "upi://pay?pn=NoId", "upi://pay?pa=bad", "upi://pay?pa=ab@ybl&cu=USD", "hello").forEach { assertNull(UpiPay.parseLink(it), it) }
+    }
+    @Test fun `a scanned code keeps its merchant fields when the link is rebuilt`() {
+        assertEquals("upi://pay?pa=shop%40ybl&pn=Shop&am=99.50&cu=INR&mc=5411&tr=T9", UpiPay.link("shop@ybl", "Shop", 9_950, "", mapOf("mc" to "5411", "tr" to "T9")))
+    }
     @Test fun `parses the response string the payment app returns`() {
         val ok = UpiPay.parseResponse("txnId=AXI123&responseCode=00&ApprovalRefNo=612345678901&Status=SUCCESS&txnRef=TR1")
         assertEquals(UpiPay.Status.SUCCESS, ok.status); assertEquals("612345678901", ok.reference)

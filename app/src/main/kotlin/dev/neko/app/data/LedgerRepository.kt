@@ -12,7 +12,7 @@ const val UPI_APP_ACCOUNT = "UPI app"
 const val STATEMENT_PREFIX = "stmt:"
 
 /** What an import did: rows added, rows that matched something already held, the new spending ready to confirm, and new debits that look like transfers or card bills ([needsReview]). */
-data class ImportResult(val imported: Int, val alreadyRecorded: Int, val alreadyImported: Int, val newDebitIds: List<String>, val skipped: Int = 0, val needsReview: Int = 0)
+data class ImportResult(val imported: Int, val alreadyRecorded: Int, val alreadyImported: Int, val newDebitIds: List<String>, val skipped: Int = 0, val needsReview: Int = 0, val transfersLinked: Int = 0)
 
 class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
     val changes = MutableStateFlow(0L)
@@ -38,6 +38,7 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
                     val merged=recorded.copy(fingerprint=incoming.fingerprint,status=if(SmsLifecycle.advances(recorded.status,incoming.status))incoming.status else recorded.status,account=incoming.account,
                         reference=incoming.reference?:recorded.reference,updatedAt=System.currentTimeMillis(),revision=recorded.revision+1)
                     db.save(merged);storeRaw(database,incoming.fingerprint,sms)
+                    autoLinkTransfers()
                     database.setTransactionSuccessful();changed();return@withContext null // the user started this payment, so no "new transaction" alert
                 }
             }
@@ -50,7 +51,10 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
             if(incoming.status==PaymentStatus.REVERSED&&incoming.reference!=null) {
                 db.transactions().filter { it.id!=tx.id&&it.account==incoming.account&&it.reference==incoming.reference&&it.amountPaise==incoming.amountPaise&&it.direction!=incoming.direction }.forEach { db.save(it.copy(status=PaymentStatus.REVERSED,updatedAt=System.currentTimeMillis(),revision=it.revision+1)) }
             }
-            database.setTransactionSuccessful();changed();tx
+            // Money moved between the user's own accounts is recognised here, so it never becomes a "review this" draft or counts as spending.
+            val linked=autoLinkTransfers()
+            database.setTransactionSuccessful();changed()
+            if(tx.id in linked)null else tx
         } finally { database.endTransaction() }
     }
     // Payments started with Neko's Pay button whose outcome is not known yet; the newest is the one the UPI app is about to report on.
@@ -116,8 +120,9 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
                 imported++
                 if(row.direction==Direction.DEBIT) { if(StatementParser.looksLikeMoneyMovement(row.merchant+" "+row.description))review++ else debits+=id }
             }
+            val linked=autoLinkTransfers();debits.removeAll(linked)
             database.setTransactionSuccessful();changed()
-            ImportResult(imported,already,again,debits,skipped,review)
+            ImportResult(imported,already,again,debits,skipped,review,linked.size/2)
         } finally { database.endTransaction() }
     }
     /**
@@ -197,11 +202,36 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
         val database=db.writableDatabase;database.beginTransaction()
         try {
             val a=db.get(aId)?:error("Transaction missing");val b=db.get(bId)?:error("Transaction missing")
-            require(a.id!=b.id&&a.direction!=b.direction&&a.account!=b.account&&a.account in db.ownAccounts()&&b.account in db.ownAccounts()&&a.amountPaise==b.amountPaise&&a.status==PaymentStatus.POSTED&&b.status==PaymentStatus.POSTED)
-            val pair=java.util.UUID.randomUUID().toString()
+            // The user is confirming these two entries, so the accounts do not have to be marked as theirs beforehand; confirming marks them.
+            require(a.id!=b.id&&a.direction!=b.direction&&a.account!=b.account&&a.amountPaise==b.amountPaise) { "A transfer needs one payment out and one payment in, for the same amount, in two different accounts." }
+            require(a.status!=PaymentStatus.FAILED&&b.status!=PaymentStatus.FAILED&&a.transferId==null&&b.transferId==null) { "One of these is failed or already part of a transfer." }
             require(a.relatedTransactionId==null&&b.relatedTransactionId==null) { "Unlink the existing movement relationship first." }
-            listOf(a,b).forEach { db.save(it.copy(transferId=pair,category=Category.TRANSFER,spendingTreatment=SpendingTreatment.AUTO,relatedTransactionId=null,review=ReviewStatus.CONFIRMED,updatedAt=System.currentTimeMillis(),revision=it.revision+1)) }
+            linkTransfer(a,b)
             database.setTransactionSuccessful();changed()
+        } finally { database.endTransaction() }
+    }
+    /** Marks entries as one transfer between the user's own accounts: out of spending and income, and both accounts remembered as theirs. */
+    private fun linkTransfer(vararg legs: Transaction) {
+        val pair=java.util.UUID.randomUUID().toString();val now=System.currentTimeMillis()
+        legs.forEach { db.save(it.copy(transferId=pair,category=Category.TRANSFER,spendingTreatment=SpendingTreatment.AUTO,relatedTransactionId=null,review=ReviewStatus.CONFIRMED,updatedAt=now,revision=it.revision+1));db.setOwned(it.account,true) }
+    }
+    /** Links the obvious own-account transfers (see [Transfers.autoPairs]) and returns the ids it linked. */
+    private fun autoLinkTransfers(): Set<String> {
+        val ids=HashSet<String>()
+        for((out,into) in Transfers.autoPairs(db.transactions(),settings.get("user_name"))) { linkTransfer(out,into);ids+=out.id;ids+=into.id }
+        return ids
+    }
+    /** The user says this entry is a transfer between their own accounts. Pairs it with the matching entry when one exists; otherwise it stands alone, excluded from spending and income. */
+    suspend fun markOwnTransfer(id: String): Boolean = withContext(Dispatchers.IO) {
+        val database=db.writableDatabase;database.beginTransaction()
+        try {
+            val tx=db.get(id)?:error("Transaction no longer exists")
+            require(tx.transferId==null) { "This is already marked as a transfer." }
+            // A movement link would otherwise be left dangling on its partner.
+            tx.relatedTransactionId?.let(db::get)?.takeIf { it.relatedTransactionId==tx.id }?.let { db.save(it.copy(relatedTransactionId=null,spendingTreatment=SpendingTreatment.AUTO,updatedAt=System.currentTimeMillis(),revision=it.revision+1)) }
+            val other=Transfers.counterpart(tx.copy(relatedTransactionId=null),db.transactions())
+            linkTransfer(*listOfNotNull(tx,other).toTypedArray())
+            database.setTransactionSuccessful();changed();other!=null
         } finally { database.endTransaction() }
     }
     suspend fun unmatchTransfer(id: String) = withContext(Dispatchers.IO) {

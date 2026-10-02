@@ -89,6 +89,11 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
     fun save(tx:Transaction)=action{app.ledger.saveManual(tx);AgentWork.syncNow(app)}
     fun correct(tx:Transaction,category:Category,merchant:String,notes:String,amount:Long,date:Long,status:PaymentStatus,treatment:SpendingTreatment=tx.spendingTreatment,relatedId:String?=tx.relatedTransactionId,principalPaise:Long?=tx.principalPaise)=action{app.ledger.correct(tx.id,tx.revision,category,merchant,notes,amount,date,status,treatment,relatedId,principalPaise);AgentWork.syncNow(app)}
     fun match(a:String,b:String)=action{app.ledger.matchTransfer(a,b);AgentWork.syncNow(app)}
+    fun ownTransfer(id:String)=action {
+        val paired=app.ledger.markOwnTransfer(id)
+        note(if(paired)"Linked with the matching entry. Both are left out of spending and income." else "Marked as a transfer between your own accounts. It is left out of spending and income.")
+        AgentWork.syncNow(app)
+    }
     fun unmatch(id:String)=action{app.ledger.unmatchTransfer(id);AgentWork.syncNow(app)}
     fun budget(category:Category,amount:Long)=action{withContext(Dispatchers.IO){app.ledger.db.saveBudget(Budget(category,amount));app.ledger.changed()};AgentWork.syncNow(app)}
     /** Saves the answers from Neko's budget interview: the month's total, income, and a limit for each category the user filled in. */
@@ -121,8 +126,8 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
     private fun background(block:suspend ()->Unit){
         viewModelScope.launch{try{block();reload()}catch(error:CancellationException){throw error}catch(error:Exception){mutable.update{it.copy(error=error.message?:"Could not complete this action")}}}
     }
-    fun beginUpi(vpa:String,name:String,amountPaise:Long,note:String,launch:(String)->Unit)=background {
-        val link=UpiPay.link(vpa,name,amountPaise,note)
+    fun beginUpi(vpa:String,name:String,amountPaise:Long,note:String,extras:Map<String,String>,launch:(String)->Unit)=background {
+        val link=UpiPay.link(vpa,name,amountPaise,note,extras)
         app.ledger.startUpi(vpa,name,amountPaise,note)
         launch(link)
     }

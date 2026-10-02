@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -11,17 +13,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.neko.core.Budgeting
+import dev.neko.core.Money
 import dev.neko.core.UpiPay
 
 /**
- * Pay someone from Neko: the payment is saved first, then Google Pay, PhonePe or any other UPI app opens with the details filled in.
- * Nothing is counted in reports until the UPI app (or your bank's SMS) confirms it.
+ * Pay someone from Neko: scan their UPI QR code (or type the details), the payment is saved first, then Google Pay, PhonePe or any other
+ * UPI app opens with the details filled in. Nothing is counted in reports until the UPI app (or your bank's SMS) confirms it.
+ * [prefill] comes from a scanned QR code; its merchant fields are kept only while the UPI ID is unchanged.
  */
-@Composable fun UpiPayDialog(onDismiss: () -> Unit, onPay: (vpa: String, name: String, amountPaise: Long, note: String) -> Unit) {
-    var vpa by rememberSaveable { mutableStateOf("") }
-    var name by rememberSaveable { mutableStateOf("") }
-    var amount by rememberSaveable { mutableStateOf("") }
-    var note by rememberSaveable { mutableStateOf("") }
+@Composable fun UpiPayDialog(prefill: UpiPay.Parsed?, onScan: () -> Unit, onDismiss: () -> Unit, onPay: (vpa: String, name: String, amountPaise: Long, note: String, extras: Map<String, String>) -> Unit) {
+    var vpa by rememberSaveable(prefill) { mutableStateOf(prefill?.vpa.orEmpty()) }
+    var name by rememberSaveable(prefill) { mutableStateOf(prefill?.name.orEmpty()) }
+    var amount by rememberSaveable(prefill) { mutableStateOf(prefill?.amountPaise?.let { if (it % 100 == 0L) (it / 100).toString() else Money.decimal(it) }.orEmpty()) }
+    var note by rememberSaveable(prefill) { mutableStateOf(prefill?.note.orEmpty()) }
     var tried by rememberSaveable { mutableStateOf(false) }
     val paise = Budgeting.parseRupees(amount)
     val vpaOk = UpiPay.isValidVpa(vpa)
@@ -30,6 +34,7 @@ import dev.neko.core.UpiPay
         title = { Text("Pay with UPI") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onScan, Modifier.fillMaxWidth()) { Icon(Icons.Outlined.QrCodeScanner, null); Text("  Scan a UPI QR code") }
                 OutlinedTextField(vpa, { vpa = it.trim().take(100) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("UPI ID") }, placeholder = { Text("name@bank") },
                     isError = tried && !vpaOk, supportingText = { if (tried && !vpaOk) Text("Enter a valid UPI ID, like name@bank") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
@@ -41,7 +46,7 @@ import dev.neko.core.UpiPay
                 Text("Neko saves this payment now and updates it when it goes through.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { TextButton({ tried = true; if (vpaOk && paise != null) onPay(vpa, name, paise, note) }) { Text("Open UPI app") } },
+        confirmButton = { TextButton({ tried = true; if (vpaOk && paise != null) onPay(vpa, name, paise, note, if (prefill != null && vpa == prefill.vpa) prefill.extras else emptyMap()) }) { Text("Open UPI app") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
     )
 }

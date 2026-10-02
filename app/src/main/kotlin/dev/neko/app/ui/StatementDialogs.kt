@@ -49,6 +49,7 @@ import dev.neko.app.data.ImportResult
                 if (result.alreadyRecorded > 0) Text("${result.alreadyRecorded} matched payments Neko had already noted, so they were not added twice.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (result.alreadyImported > 0) Text("${result.alreadyImported} were already imported from this statement before.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (result.skipped > 0) Text("${result.skipped} line${if (result.skipped == 1) "" else "s"} could not be read and ${if (result.skipped == 1) "was" else "were"} left out.", color = MaterialTheme.colorScheme.error)
+                if (result.transfersLinked > 0) Text("${result.transfersLinked} looked like transfers between your own accounts and were linked, so they are not counted as spending.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (result.needsReview > 0) Text("${result.needsReview} look like transfers, card bills or investments, so they stay as drafts for you to check.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (result.newDebitIds.isNotEmpty()) Text("Confirm the ${result.newDebitIds.size} spending entries now? Money received stays a draft for you to check.", style = MaterialTheme.typography.bodyMedium)
             }
