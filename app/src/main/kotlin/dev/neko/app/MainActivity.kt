@@ -33,7 +33,7 @@ class MainActivity:ComponentActivity() {
         }
     }
     // Replies finished while the app was in the background are fetched as soon as it returns.
-    override fun onStart(){super.onStart();dev.neko.app.agent.AgentWork.syncNow(this)}
+    override fun onStart(){super.onStart();dev.neko.app.capture.SmsCatchUpWorker.runNow(this);dev.neko.app.agent.AgentWork.syncNow(this)}
     override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);readIntent(intent)}
     private fun readIntent(intent:Intent){requestedTransaction=intent.getStringExtra("transaction_id");requestedAgent=intent.getBooleanExtra("open_agent",false)}
 }

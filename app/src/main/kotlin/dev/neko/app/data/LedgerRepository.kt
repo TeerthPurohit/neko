@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+/** Placeholder account for payments started in Neko; replaced by the real bank account once the bank SMS is matched. */
+const val UPI_APP_ACCOUNT = "UPI app"
+
 class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
     val changes = MutableStateFlow(0L)
     fun changed() { changes.value = changes.value + 1 }
@@ -14,6 +17,16 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
         val incoming = SmsParser().parse(sms) ?: return@withContext null
         val database=db.writableDatabase;database.beginTransaction()
         try {
+            // This notice was already folded into a UPI payment recorded in Neko (or dropped as its duplicate): never recreate it.
+            if(db.get(incoming.id)==null&&db.hasRawSms(incoming.fingerprint))return@withContext null
+            // A payment started from Neko's Pay button is the same money as its bank SMS: match by UPI reference, else same amount within 30 minutes.
+            val recorded=db.transactions().firstOrNull { it.source==Source.MANUAL&&it.account==UPI_APP_ACCOUNT&&it.direction==incoming.direction&&it.amountPaise==incoming.amountPaise&&it.status!=PaymentStatus.FAILED&&
+                ((incoming.reference!=null&&it.reference==incoming.reference)||(it.reference==null&&kotlin.math.abs(it.occurredAt-incoming.occurredAt)<=1_800_000)) }
+            if(recorded!=null) {
+                db.save(recorded.copy(status=incoming.status,account=incoming.account,reference=incoming.reference?:recorded.reference,updatedAt=System.currentTimeMillis(),revision=recorded.revision+1))
+                database.insertWithOnConflict("raw_sms",null,android.content.ContentValues().apply { put("fingerprint",incoming.fingerprint);put("ciphertext",settings.encrypt(JSONObject().put("sender",sms.sender).put("body",sms.body).toString(),"sms:"+incoming.fingerprint)) },android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE)
+                database.setTransactionSuccessful();changed();return@withContext null
+            }
             val old=db.get(incoming.id)
             if(old!=null&&old.status==incoming.status&&old.amountPaise==incoming.amountPaise) { database.setTransactionSuccessful();return@withContext null }
             val conflict=old!=null&&(old.amountPaise!=incoming.amountPaise||old.direction!=incoming.direction)
@@ -24,6 +37,29 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
                 db.transactions().filter { it.id!=incoming.id&&it.account==incoming.account&&it.reference==incoming.reference&&it.amountPaise==incoming.amountPaise&&it.direction!=incoming.direction }.forEach { db.save(it.copy(status=PaymentStatus.REVERSED,updatedAt=System.currentTimeMillis(),revision=it.revision+1)) }
             }
             database.setTransactionSuccessful();changed();tx
+        } finally { database.endTransaction() }
+    }
+    /** Records a payment the moment the user taps Pay, before the UPI app opens. It stays PENDING (and out of reports) until the result is known. */
+    suspend fun startUpi(vpa: String, name: String, amountPaise: Long, note: String): Transaction = withContext(Dispatchers.IO) {
+        require(UpiPay.isValidVpa(vpa)) { "Enter a valid UPI ID, like name@bank" }
+        val merchant = name.trim().ifEmpty { vpa.trim() }.take(100)
+        val tx = Transaction(occurredAt = System.currentTimeMillis(), amountPaise = amountPaise, direction = Direction.DEBIT, account = UPI_APP_ACCOUNT, merchant = merchant,
+            category = LocalClassifier.classify("$merchant $note", Direction.DEBIT), paymentMethod = "UPI", notes = note.trim().ifEmpty { "Paid with UPI to ${vpa.trim()}" }.take(200),
+            source = Source.MANUAL, review = ReviewStatus.CONFIRMED, status = PaymentStatus.PENDING)
+        db.save(tx);settings.put("pending_upi", tx.id);changed();tx
+    }
+    /** Settles a payment from [startUpi]. A bank SMS that already arrived for the same UPI reference is merged in rather than counted twice. */
+    suspend fun finishUpi(id: String, status: PaymentStatus, reference: String?): Transaction? = withContext(Dispatchers.IO) {
+        val database=db.writableDatabase;database.beginTransaction()
+        try {
+            val tx=db.get(id)?:return@withContext null
+            if(tx.status!=PaymentStatus.PENDING)return@withContext tx
+            val duplicate=reference?.let { ref->db.transactions().firstOrNull { it.id!=id&&it.source==Source.SMS&&it.reference==ref&&it.amountPaise==tx.amountPaise&&it.direction==Direction.DEBIT } }
+            val settled=tx.copy(status=duplicate?.status?:status,reference=reference?:tx.reference,account=duplicate?.account?:tx.account,updatedAt=System.currentTimeMillis(),revision=tx.revision+1)
+            db.save(settled);if(duplicate!=null)db.delete(duplicate.id)
+            database.setTransactionSuccessful()
+            settings.remove("pending_upi")
+            changed();settled
         } finally { database.endTransaction() }
     }
     suspend fun saveManual(tx: Transaction, treatment: SpendingTreatment = tx.spendingTreatment, relatedId: String? = tx.relatedTransactionId, principalPaise: Long? = tx.principalPaise) = withContext(Dispatchers.IO) {

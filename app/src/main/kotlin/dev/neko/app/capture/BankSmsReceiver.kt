@@ -18,9 +18,12 @@ class BankSmsReceiver: BroadcastReceiver() {
         val body=messages.joinToString(""){it.messageBody.orEmpty()}
         if(body.length>5000||SmsParser().parse(BankSms(sender,body,messages.first().timestampMillis))==null)return
         val app=context.applicationContext as NekoApplication
-        val payload=JSONObject().put("sender",sender).put("body",body).put("time",messages.first().timestampMillis).toString()
-        val encrypted=app.settings.encrypt(payload,"pending_sms")
-        val work=OneTimeWorkRequestBuilder<SmsCaptureWorker>().setInputData(workDataOf("encrypted" to encrypted)).build()
-        WorkManager.getInstance(context).enqueue(work)
+        // The inbox catch-up (every 15 minutes, and below) re-reads this message if encrypting or queueing it fails here.
+        try {
+            val payload=JSONObject().put("sender",sender).put("body",body).put("time",messages.first().timestampMillis).toString()
+            val encrypted=app.settings.encrypt(payload,"pending_sms")
+            val work=OneTimeWorkRequestBuilder<SmsCaptureWorker>().setInputData(workDataOf("encrypted" to encrypted)).build()
+            WorkManager.getInstance(context).enqueue(work)
+        } catch(_:Exception) { SmsCatchUpWorker.runNow(context) }
     }
 }

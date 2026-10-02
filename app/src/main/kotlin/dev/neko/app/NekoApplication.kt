@@ -15,6 +15,7 @@ class NekoApplication: Application() {
         val network=Network();agent=AgentRepository(ledger,network);splitwise=SplitwiseRepository(ledger,network)
         dev.neko.app.agent.Notifications.createChannels(this)
         dev.neko.app.agent.AgentWork.cancelPeriodic(this)
+        dev.neko.app.capture.SmsCatchUpWorker.schedule(this)
         configureFirebase()
     }
     fun configureFirebase() {

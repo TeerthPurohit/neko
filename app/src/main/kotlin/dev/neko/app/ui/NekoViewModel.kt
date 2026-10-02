@@ -24,6 +24,10 @@ data class NekoState(
     val backendUrl:String="",val splitwiseConnected:Boolean=false,val model:String="xiaomi/mimo-v2.6-pro",val models:List<String> = listOf("xiaomi/mimo-v2.6-pro"),
     val lastSync:Long=0,val usageRequests:Int=0,val usageCost:Double=0.0,val userName:String="You",val pendingTasks:Int=0,
     val hasModelKey:Boolean=false,val offlineProfile:Boolean=false,val byokDeferred:Boolean=false,val firebaseConfigured:Boolean=false,
+    /** This month's total budget and income in paise; 0 when not set yet. [previousBudgetPaise] is last month's, offered as a starting point. */
+    val monthBudgetPaise:Long=0,val monthIncomePaise:Long=0,val previousBudgetPaise:Long=0,
+    /** A UPI payment whose outcome the payment app did not report; the user is asked whether it went through. */
+    val upiPromptId:String?=null,
 )
 
 class NekoViewModel(private val app:NekoApplication):ViewModel() {
@@ -32,7 +36,12 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
     private var observer:Job?=null
     fun start() {
         if(observer?.isActive==true)return
-        observer=viewModelScope.launch { app.ledger.changes.collect { reload() } }
+        observer=viewModelScope.launch {
+            // A payment left PENDING by an earlier session (app closed while the UPI app was open) is asked about once on start.
+            val unfinished=withContext(Dispatchers.IO){app.settings.get("pending_upi")}
+            if(unfinished.isNotBlank())mutable.update{it.copy(upiPromptId=unfinished)}
+            app.ledger.changes.collect { reload() }
+        }
     }
     private suspend fun reload() {
         val result=withContext(Dispatchers.IO) {
@@ -49,6 +58,9 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
                 usageRequests=(0 until usage.length()).sumOf {usage.getJSONObject(it).getInt("requests")},usageCost=(0 until usage.length()).sumOf {usage.getJSONObject(it).getDouble("cost")},userName=s.get("user_name","You"),pendingTasks=agent.optJSONArray("tasks")?.let { tasks->(0 until tasks.length()).count {tasks.getJSONObject(it).optString("status") in listOf("queued","running")} }?:0,
                 hasModelKey=s.get("has_model_key","false").toBoolean(),offlineProfile=s.get("offline_profile","false").toBoolean(),byokDeferred=s.get("byok_deferred","false").toBoolean(),
                 firebaseConfigured=com.google.firebase.FirebaseApp.getApps(app).isNotEmpty(),
+                monthBudgetPaise=if(s.get("month_budget_month")==java.time.YearMonth.now(Ledger.india).toString())s.get("month_budget_paise","0").toLongOrNull()?:0 else 0,
+                monthIncomePaise=if(s.get("month_budget_month")==java.time.YearMonth.now(Ledger.india).toString())s.get("month_income_paise","0").toLongOrNull()?:0 else 0,
+                previousBudgetPaise=s.get("month_budget_paise","0").toLongOrNull()?:0,
             )
         }
         // A concurrent data refresh must not restore an action's old busy/error state.
@@ -77,6 +89,45 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
     fun match(a:String,b:String)=action{app.ledger.matchTransfer(a,b);AgentWork.syncNow(app)}
     fun unmatch(id:String)=action{app.ledger.unmatchTransfer(id);AgentWork.syncNow(app)}
     fun budget(category:Category,amount:Long)=action{withContext(Dispatchers.IO){app.ledger.db.saveBudget(Budget(category,amount));app.ledger.changed()};AgentWork.syncNow(app)}
+    /** Saves the answers from Neko's budget interview: the month's total, income, and a limit for each category the user filled in. */
+    fun saveBudgetPlan(total:Long,income:Long,limits:Map<Category,Long>)=action {
+        require(total in 1..Budgeting.MAX_PAISE){"Enter a budget between ₹1 and ₹1,00,00,000"}
+        withContext(Dispatchers.IO) {
+            limits.forEach{(category,amount)->app.ledger.db.saveBudget(Budget(category,amount))}
+            app.settings.put("month_budget_paise",total.toString());app.settings.put("month_budget_month",java.time.YearMonth.now(Ledger.india).toString())
+            app.settings.put("month_income_paise",income.toString())
+            app.ledger.changed()
+        }
+        AgentWork.syncNow(app);note("Budget saved. I'll keep watch and tell you when you're getting close.")
+    }
+    /** Saves the payment as pending first, then hands the `upi://pay` link to [launch] so a crash or a back-press never loses the record. */
+    // Payments are never skipped because another action (such as waiting for a chat reply) is still running.
+    private fun background(block:suspend ()->Unit){
+        viewModelScope.launch{try{block();reload()}catch(error:CancellationException){throw error}catch(error:Exception){mutable.update{it.copy(error=error.message?:"Could not complete this action")}}}
+    }
+    fun beginUpi(vpa:String,name:String,amountPaise:Long,note:String,launch:(String)->Unit)=background {
+        val link=UpiPay.link(vpa,name,amountPaise,note)
+        app.ledger.startUpi(vpa,name,amountPaise,note)
+        launch(link)
+    }
+    /** [raw] is the response string from the UPI app (for example `Status=SUCCESS&ApprovalRefNo=...`), or null if it returned nothing. */
+    fun finishUpi(raw:String?)=background {
+        val id=app.settings.get("pending_upi");if(id.isBlank())return@background
+        val result=UpiPay.parseResponse(raw)
+        when(result.status) {
+            UpiPay.Status.SUCCESS->{app.ledger.finishUpi(id,PaymentStatus.POSTED,result.reference);note("Payment recorded.");AgentWork.syncNow(app)}
+            UpiPay.Status.FAILURE->{app.ledger.finishUpi(id,PaymentStatus.FAILED,result.reference);note("The payment failed, so it is not counted.")}
+            UpiPay.Status.SUBMITTED->{app.ledger.finishUpi(id,PaymentStatus.PENDING,result.reference);note("The payment is still processing. Neko will update it when your bank's SMS arrives.")}
+            UpiPay.Status.UNKNOWN->mutable.update{it.copy(upiPromptId=id)}
+        }
+    }
+    /** The user's answer to "did it go through?": true = paid, false = failed, null = not sure yet (the bank SMS will settle it). */
+    fun resolveUpi(paid:Boolean?)=background {
+        val id=mutable.value.upiPromptId;mutable.update{it.copy(upiPromptId=null)}
+        if(id==null||paid==null)return@background
+        app.ledger.finishUpi(id,if(paid)PaymentStatus.POSTED else PaymentStatus.FAILED,null)
+        if(paid){note("Payment recorded.");AgentWork.syncNow(app)}
+    }
     fun setOwned(account:String,value:Boolean)=action{withContext(Dispatchers.IO){app.ledger.db.setOwned(account,value);app.ledger.changed()}}
     fun theme(value:String)=action{app.settings.theme=value;app.ledger.changed()}
     fun motion(value:Boolean)=action{app.settings.reducedMotion=value;app.ledger.changed()}

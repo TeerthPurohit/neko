@@ -29,7 +29,13 @@ import android.net.Uri
             OutlinedButton(onPermissions){Text("Manage capture permissions")}
             if(inboxGranted)OutlinedButton({model.scanInbox()},enabled=!state.busy){Text("Scan last 90 days of SMS")}
             else Text("Allow SMS access to also import bank notices that arrived before Neko was set up.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("Background checks can be delayed by Android battery restrictions, loss of connectivity, or force-stop. Notifications open the relevant screen when you tap them.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            val context=androidx.compose.ui.platform.LocalContext.current
+            val keepAlive=remember{ context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName) }
+            OutlinedButton({
+                runCatching{context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,android.net.Uri.parse("package:"+context.packageName)))}
+                    .onFailure{runCatching{context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))}}
+            }){Text(if(keepAlive)"Always-on: battery unrestricted" else "Keep Neko always on (allow background)")}
+            Text("Neko notes down bank SMS even when the app is closed, and re-checks your inbox every 15 minutes in case Android delayed a message. Phones that restrict background apps can still pause this, so allow background use above. Force-stopping the app pauses it until you open Neko again.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }}
         item{Panel(Modifier.fillMaxWidth()){
             Text("Agent connection",style=MaterialTheme.typography.titleLarge);StatusPill(if(state.paired)"Backend connected"else"Connect when ready",state.paired)

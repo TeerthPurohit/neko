@@ -2,6 +2,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application android:name=".NekoApplication" android:allowBackup="false"
         android:label="Neko" android:icon="@drawable/ic_neko" android:theme="@style/Theme.Neko"
@@ -13,7 +14,7 @@
             </intent-filter>
         </activity>
         <receiver android:name=".capture.BankSmsReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS">
-            <intent-filter><action android:name="android.provider.Telephony.SMS_RECEIVED" /></intent-filter>
+            <intent-filter android:priority="999"><action android:name="android.provider.Telephony.SMS_RECEIVED" /></intent-filter>
         </receiver>
         <service android:name=".agent.NekoMessagingService" android:exported="false">
             <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>

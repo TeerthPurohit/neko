@@ -43,6 +43,8 @@ class NekoDatabase(context: Context): SQLiteOpenHelper(context,"neko.db",null,1)
     fun transactions(): List<Transaction> = readableDatabase.rawQuery("SELECT data FROM ledger ORDER BY occurred_at DESC",null).use { c -> buildList { while(c.moveToNext()) add(transactionFromJson(JSONObject(c.getString(0)))) } }
     fun get(id: String): Transaction? = readableDatabase.rawQuery("SELECT data FROM ledger WHERE id=?", arrayOf(id)).use { c -> if(c.moveToFirst())transactionFromJson(JSONObject(c.getString(0)))else null }
     fun save(tx: Transaction) { writableDatabase.insertWithOnConflict("ledger",null,ContentValues().apply { put("id",tx.id);put("fingerprint",tx.fingerprint);put("occurred_at",tx.occurredAt);put("data",tx.toJson().toString()) },SQLiteDatabase.CONFLICT_REPLACE) }
+    fun delete(id: String) { writableDatabase.delete("ledger","id=?",arrayOf(id)) }
+    fun hasRawSms(fingerprint: String): Boolean = readableDatabase.rawQuery("SELECT 1 FROM raw_sms WHERE fingerprint=? LIMIT 1",arrayOf(fingerprint)).use { it.moveToFirst() }
     fun budgets(): List<Budget> = readableDatabase.rawQuery("SELECT category,amount_paise FROM budgets",null).use { c -> buildList { while(c.moveToNext())add(Budget(Category.valueOf(c.getString(0)),c.getLong(1))) } }
     fun saveBudget(budget: Budget) { require(budget.amountPaise>0);writableDatabase.insertWithOnConflict("budgets",null,ContentValues().apply { put("category",budget.category.name);put("amount_paise",budget.amountPaise) },SQLiteDatabase.CONFLICT_REPLACE) }
     fun ownAccounts(): Set<String> = readableDatabase.rawQuery("SELECT account FROM own_accounts",null).use { c -> buildSet { while(c.moveToNext())add(c.getString(0)) } }
