@@ -10,11 +10,9 @@ import org.json.JSONObject
 const val UPI_APP_ACCOUNT = "UPI app"
 /** Imported statement rows start with this fingerprint prefix until a bank SMS for the same payment claims them. */
 const val STATEMENT_PREFIX = "stmt:"
-/** A statement shows only the day, so a bank SMS may be up to a day and a half away from its row. */
-const val STATEMENT_WINDOW_MS = 129_600_000L
 
-/** What an import did: new rows added, rows that matched something already in the ledger, and the new spending ready to confirm. */
-data class ImportResult(val imported: Int, val alreadyRecorded: Int, val alreadyImported: Int, val newDebitIds: List<String>, val skipped: Int = 0)
+/** What an import did: rows added, rows that matched something already held, the new spending ready to confirm, and new debits that look like transfers or card bills ([needsReview]). */
+data class ImportResult(val imported: Int, val alreadyRecorded: Int, val alreadyImported: Int, val newDebitIds: List<String>, val skipped: Int = 0, val needsReview: Int = 0)
 
 class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
     val changes = MutableStateFlow(0L)
@@ -32,9 +30,10 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
             if(old==null) {
                 // Same money as a payment started in Neko: match by UPI reference, or by amount + time + the payee named in the notice.
                 // A statement row not yet claimed by a notice still carries its "stmt:" fingerprint; statements only know the date, so allow 36 hours.
-                val recorded=db.transactions().firstOrNull { it.direction==incoming.direction&&it.amountPaise==incoming.amountPaise&&it.status!=PaymentStatus.FAILED&&(
-                    (it.source==Source.MANUAL&&it.account==UPI_APP_ACCOUNT&&((incoming.reference!=null&&it.reference==incoming.reference)||(kotlin.math.abs(it.occurredAt-incoming.occurredAt)<=1_800_000&&UpiPay.samePayee(it.merchant,it.notes,incoming.merchant))))||
-                    (it.source==Source.STATEMENT&&it.fingerprint.startsWith(STATEMENT_PREFIX)&&((incoming.reference!=null&&it.reference==incoming.reference)||kotlin.math.abs(it.occurredAt-incoming.occurredAt)<=STATEMENT_WINDOW_MS))) }
+                val sameMoney=db.transactions().filter { it.direction==incoming.direction&&it.amountPaise==incoming.amountPaise&&it.status!=PaymentStatus.FAILED }
+                val upiRecorded=sameMoney.firstOrNull { it.source==Source.MANUAL&&it.account==UPI_APP_ACCOUNT&&((incoming.reference!=null&&it.reference==incoming.reference)||(kotlin.math.abs(it.occurredAt-incoming.occurredAt)<=1_800_000&&UpiPay.samePayee(it.merchant,it.notes,incoming.merchant))) }
+                // A statement row not yet claimed by a notice still carries its "stmt:" fingerprint. Two different references are two payments.
+                val recorded=upiRecorded?:RecordMatching.best(sameMoney.filter { it.source==Source.STATEMENT&&it.fingerprint.startsWith(STATEMENT_PREFIX) }.map { RecordMatching.Candidate(it,it.reference,it.occurredAt) },incoming.reference,incoming.occurredAt)?.item
                 if(recorded!=null) {
                     val merged=recorded.copy(fingerprint=incoming.fingerprint,status=if(SmsLifecycle.advances(recorded.status,incoming.status))incoming.status else recorded.status,account=incoming.account,
                         reference=incoming.reference?:recorded.reference,updatedAt=System.currentTimeMillis(),revision=recorded.revision+1)
@@ -85,46 +84,55 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
         } finally { database.endTransaction() }
     }
     /**
-     * Adds statement rows to the ledger as drafts. Rows already captured from SMS (same amount and direction, within 36 hours, or the same reference)
-     * are matched one-to-one instead of duplicated, and importing the same file again adds nothing.
+     * Adds statement rows to the ledger as drafts. A row that is the same payment as something already held (same reference, or no conflicting
+     * reference and the same or the next day) is matched one-to-one instead of duplicated, and importing the same file again adds nothing.
      */
     suspend fun importStatement(rows: List<StatementRow>, account: String, skipped: Int = 0): ImportResult = withContext(Dispatchers.IO) {
         val database=db.writableDatabase;database.beginTransaction()
         try {
             val existing=db.transactions();val claimed=HashSet<String>();val seen=HashMap<String,Int>()
-            var imported=0;var already=0;var again=0;val debits=ArrayList<String>()
+            var imported=0;var already=0;var again=0;var review=0;val debits=ArrayList<String>()
             for(row in rows.sortedBy { it.date }) {
                 val at=row.date.atTime(12,0).atZone(Ledger.india).toInstant().toEpochMilli()
-                // Identical rows on one day (two ₹50 teas) stay distinct through their occurrence number.
-                val key="${row.date}|${row.amountPaise}|${row.direction}|${row.reference?:row.description.lowercase()}"
+                // Identical rows on one day (two ₹50 teas) stay distinct through their occurrence number. The merchant, not the full narration,
+                // keys rows without a reference so page footers glued onto a narration cannot change a row's identity.
+                val key="${row.date}|${row.amountPaise}|${row.direction}|${row.reference?:row.merchant.lowercase().take(30)}"
                 val number=(seen[key]?:0)+1;seen[key]=number
                 val id=STATEMENT_PREFIX+sha256("$account|$key|$number")
                 if(db.get(id)!=null){again++;continue}
-                val match=existing.firstOrNull { it.id !in claimed&&it.direction==row.direction&&it.amountPaise==row.amountPaise&&it.status!=PaymentStatus.FAILED&&
-                    ((row.reference!=null&&it.reference==row.reference)||kotlin.math.abs(it.occurredAt-at)<=STATEMENT_WINDOW_MS) }
+                val candidates=existing.filter { it.id !in claimed&&it.direction==row.direction&&it.amountPaise==row.amountPaise&&it.status!=PaymentStatus.FAILED }.map { RecordMatching.Candidate(it,it.reference,it.occurredAt) }
+                val match=RecordMatching.best(candidates,row.reference,at)?.item
                 if(match!=null) {
                     claimed+=match.id;already++
-                    if(match.status==PaymentStatus.PENDING||(match.reference==null&&row.reference!=null))
-                        db.save(match.copy(status=if(match.status==PaymentStatus.PENDING)PaymentStatus.POSTED else match.status,reference=match.reference?:row.reference,updatedAt=System.currentTimeMillis(),revision=match.revision+1))
+                    // A pending payment is only settled by proof: a bank notice, or the same UPI reference. A same-amount debit nearby is not proof.
+                    val settles=match.status==PaymentStatus.PENDING&&(match.source==Source.SMS||(match.reference!=null&&match.reference==row.reference))
+                    if(settles||(match.reference==null&&row.reference!=null))
+                        db.save(match.copy(status=if(settles)PaymentStatus.POSTED else match.status,reference=match.reference?:row.reference,updatedAt=System.currentTimeMillis(),revision=match.revision+1))
                     continue
                 }
                 db.save(Transaction(id=id,fingerprint=id,occurredAt=at,amountPaise=row.amountPaise,direction=row.direction,account=account,merchant=row.merchant.take(100),
                     category=if(row.direction==Direction.CREDIT)Category.OTHER else LocalClassifier.classify(row.merchant,row.direction),paymentMethod=if(row.description.startsWith("UPI",true))"UPI" else "Bank",
                     notes="Imported from a bank statement. Confirm the details.",confidence=0.6,source=Source.STATEMENT,review=ReviewStatus.DRAFT,status=PaymentStatus.POSTED,reference=row.reference))
-                imported++;if(row.direction==Direction.DEBIT)debits+=id
+                imported++
+                if(row.direction==Direction.DEBIT) { if(StatementParser.looksLikeMoneyMovement(row.merchant+" "+row.description))review++ else debits+=id }
             }
             database.setTransactionSuccessful();changed()
-            ImportResult(imported,already,again,debits,skipped)
+            ImportResult(imported,already,again,debits,skipped,review)
         } finally { database.endTransaction() }
     }
-    /** Confirms freshly imported spending in one step. Money received stays a draft: it needs a person to say whether it is income, a refund or a repayment. */
+    /**
+     * Confirms freshly imported spending in one step. Money received stays a draft (income, refund or repayment needs a person), and so do
+     * transfers, card bills and investments, which would otherwise inflate spending. Only payments that are still posted are confirmed.
+     */
     suspend fun confirmImportedSpending(ids: List<String>): Int = withContext(Dispatchers.IO) {
         val database=db.writableDatabase;database.beginTransaction()
         try {
             var confirmed=0
             for(id in ids) {
                 val tx=db.get(id)?:continue
-                if(tx.direction==Direction.DEBIT&&tx.review==ReviewStatus.DRAFT) { db.save(tx.copy(review=ReviewStatus.CONFIRMED,updatedAt=System.currentTimeMillis(),revision=tx.revision+1));confirmed++ }
+                if(tx.direction==Direction.DEBIT&&tx.review==ReviewStatus.DRAFT&&tx.status==PaymentStatus.POSTED&&!StatementParser.looksLikeMoneyMovement(tx.merchant)) {
+                    db.save(tx.copy(review=ReviewStatus.CONFIRMED,updatedAt=System.currentTimeMillis(),revision=tx.revision+1));confirmed++
+                }
             }
             database.setTransactionSuccessful();if(confirmed>0)changed();confirmed
         } finally { database.endTransaction() }

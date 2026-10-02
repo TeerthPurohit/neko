@@ -75,6 +75,29 @@ Page 1 of 2
         assertEquals(1, StatementParser.parse("Date,Narration,Debit,Credit\n02/10/2026,ok,10.00,\n02/10/2026,bad amount,abc,").skipped)
     }
 
+    @Test fun `newest first pdf text and a missing opening balance resolve direction from neighbouring balances`() {
+        val newestFirst = """
+04/10/2026 NEFT-HDFCN52026-ACME CORP-SALARY 50,000.00 1,48,765.49
+03/10/2026 UPI/612345678901/ZOMATO/ybl 1,234.50 98,765.49
+02/10/2026 CREDIT CARD BILL PAY 5,000.00 99,999.99
+Opening Balance 1,04,999.99
+""".trim()
+        val rows = StatementParser.parse(newestFirst).rows.sortedBy { it.date }
+        assertEquals(listOf(Direction.DEBIT, Direction.DEBIT, Direction.CREDIT), rows.map { it.direction })
+        val noOpening = "02/10/2026 POS 436612XXXXXX1234 SWIGGY 1,234.50 98,765.50\n03/10/2026 ACME PAYROLL 50,000.00 1,48,765.50"
+        assertEquals(listOf(Direction.DEBIT, Direction.CREDIT), StatementParser.parse(noOpening).rows.map { it.direction })
+    }
+    @Test fun `a pdf row whose direction cannot be proven is reported not guessed`() {
+        val parsed = StatementParser.parse("02/10/2026 MYSTERY ENTRY 777.00")
+        assertEquals(0, parsed.rows.size); assertEquals(1, parsed.skipped)
+    }
+    @Test fun `tran date headers short month names and unreadable dates with amounts are handled`() {
+        val csv = "Tran Date,Value Date,Particulars,Withdrawals,Deposits\n30-Sept-26,01-Oct-26,UPI/612345678901/CAFE/ybl,90.00,\n??,,mystery,10.00,\n,,continuation of mystery,,"
+        val parsed = StatementParser.parse(csv)
+        assertEquals(LocalDate.of(2026, 9, 30), parsed.rows.single().date, "the transaction date, not the value date, is used")
+        assertEquals(1, parsed.skipped)
+        assertFalse(parsed.rows.single().description.contains("mystery"), "a continuation must not attach to a row that was skipped")
+    }
     @Test fun `merchant and reference extraction`() {
         assertEquals("ZOMATO" to "612345678901", StatementParser.merchantAndReference("UPI/612345678901/ZOMATO/ybl/Payment from Ph"))
         assertEquals("ACME CORP" to null, StatementParser.merchantAndReference("NEFT-HDFCN52026-ACME CORP-SALARY"))

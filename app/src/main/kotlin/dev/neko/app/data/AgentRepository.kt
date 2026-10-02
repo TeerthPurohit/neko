@@ -37,7 +37,7 @@ class AgentRepository(private val ledger: LedgerRepository, private val network:
         fun safeMerchant(s:String)=s.replace(Regex("[\\w.+-]+@[\\w.-]+"),"Private counterparty").replace(Regex("\\b\\d{4,}\\b"),"Private number").take(100)
         val txs=JSONArray(rows.map { t -> JSONObject().put("id",t.id).put("occurred_at",t.occurredAt).put("amount_paise",t.amountPaise)
             .put("direction",t.direction.name).put("category",t.category.name).put("merchant",safeMerchant(t.merchant))
-            .put("status",t.status.name).put("review",t.review.name).put("account_alias",t.account.substringBefore(" ·"))
+            .put("status",t.status.name).put("review",t.review.name).put("account_alias",if(t.source==Source.STATEMENT)"Statement import" else t.account.substringBefore(" ·"))
             .put("transfer_id",t.transferId).put("updated_at",t.updatedAt)
             .put("spending_treatment",t.spendingTreatment.name).put("related_transaction_id",t.relatedTransactionId).put("principal_paise",t.principalPaise) })
         val budgets=JSONArray(ledger.db.budgets().map { JSONObject().put("category",it.category.name).put("amount_paise",it.amountPaise) })

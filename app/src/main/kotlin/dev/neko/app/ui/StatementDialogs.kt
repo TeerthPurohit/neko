@@ -15,7 +15,7 @@ import dev.neko.app.data.ImportResult
 /** Choose how to read a bank statement file the user picked. Everything is read on this phone; the file is never uploaded. */
 @Composable fun StatementImportDialog(busy: Boolean, onDismiss: () -> Unit, onImport: (account: String, password: String, thisMonthOnly: Boolean) -> Unit) {
     var account by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
+    var password by remember { mutableStateOf("") } // deliberately not saved: a password must not be written into saved instance state
     var thisMonthOnly by rememberSaveable { mutableStateOf(true) }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
@@ -49,6 +49,7 @@ import dev.neko.app.data.ImportResult
                 if (result.alreadyRecorded > 0) Text("${result.alreadyRecorded} matched payments Neko had already noted, so they were not added twice.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (result.alreadyImported > 0) Text("${result.alreadyImported} were already imported from this statement before.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (result.skipped > 0) Text("${result.skipped} line${if (result.skipped == 1) "" else "s"} could not be read and ${if (result.skipped == 1) "was" else "were"} left out.", color = MaterialTheme.colorScheme.error)
+                if (result.needsReview > 0) Text("${result.needsReview} look like transfers, card bills or investments, so they stay as drafts for you to check.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (result.newDebitIds.isNotEmpty()) Text("Confirm the ${result.newDebitIds.size} spending entries now? Money received stays a draft for you to check.", style = MaterialTheme.typography.bodyMedium)
             }
         },

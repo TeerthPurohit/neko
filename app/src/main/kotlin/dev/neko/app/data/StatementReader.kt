@@ -19,13 +19,19 @@ class StatementException(message: String) : Exception(message)
 
 /** Turns a chosen statement file (CSV, TSV, text or PDF) into transaction rows, entirely on the phone. */
 object StatementReader {
-    private const val MAX_BYTES = 15 * 1024 * 1024
+    // PDFBox holds the file, its object tree and the extracted text in memory at once, so the limit is modest for phones.
+    private const val MAX_BYTES = 8 * 1024 * 1024
+    private const val TOO_BIG = "That file is too big for this phone. Export a shorter date range, or use the CSV download from net banking."
 
     suspend fun read(context: Context, uri: Uri, pdfPassword: String): StatementParse = withContext(Dispatchers.IO) {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readNBytes(MAX_BYTES + 1) } ?: throw StatementException("Could not open that file.")
-        if (bytes.size > MAX_BYTES) throw StatementException("That file is larger than 15 MB. Export a shorter date range.")
-        val text = if (bytes.size > 4 && String(bytes, 0, 4, Charsets.ISO_8859_1) == "%PDF") pdfText(context, bytes, pdfPassword) else decode(bytes)
-        StatementParser.parse(text).also { if (it.rows.isEmpty()) throw StatementException("I couldn't find any transactions in that file. Try the CSV export from your bank's net banking.") }
+        try {
+            val bytes = try { context.contentResolver.openInputStream(uri)?.use { it.readNBytes(MAX_BYTES + 1) } }
+            catch (_: java.io.IOException) { null } catch (_: SecurityException) { null } // the file grant is gone (for example after the app was restarted)
+                ?: throw StatementException("I couldn't open that file. Please pick it again.")
+            if (bytes.size > MAX_BYTES) throw StatementException(TOO_BIG)
+            val text = if (bytes.size > 4 && String(bytes, 0, 4, Charsets.ISO_8859_1) == "%PDF") pdfText(context, bytes, pdfPassword) else decode(bytes)
+            StatementParser.parse(text).also { if (it.rows.isEmpty()) throw StatementException("I couldn't find any transactions in that file. Try the CSV export from your bank's net banking.") }
+        } catch (_: OutOfMemoryError) { throw StatementException(TOO_BIG) }
     }
 
     private fun decode(bytes: ByteArray): String = try {

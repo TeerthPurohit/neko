@@ -26,11 +26,11 @@ object StatementParser {
     }
 
     // ---------- dates and money ----------
-    private val dateFormats = listOf("dd/MM/yyyy", "dd-MM-yyyy", "dd.MM.yyyy", "d/M/yyyy", "d-M-yyyy", "dd/MM/yy", "dd-MM-yy", "d/M/yy", "dd MMM yyyy", "dd-MMM-yyyy", "dd/MMM/yyyy", "d MMM yyyy", "d-MMM-yyyy", "dd MMM yy", "dd-MMM-yy", "yyyy-MM-dd", "yyyy/MM/dd")
+    private val dateFormats = listOf("dd/MM/yyyy", "dd-MM-yyyy", "dd.MM.yyyy", "d/M/yyyy", "d-M-yyyy", "dd/MM/yy", "dd-MM-yy", "d/M/yy", "dd MMM yyyy", "dd-MMM-yyyy", "dd/MMM/yyyy", "d MMM yyyy", "d-MMM-yyyy", "dd MMM yy", "dd-MMM-yy", "d-MMM-yy", "d MMM yy", "dd/MMM/yy", "yyyy-MM-dd", "yyyy/MM/dd")
         .map { DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern(it).toFormatter(Locale.ENGLISH) }
     private fun tryDate(text: String): LocalDate? = dateFormats.firstNotNullOfOrNull { f -> try { LocalDate.parse(text, f) } catch (_: Exception) { null } }
     fun parseDate(cell: String): LocalDate? {
-        val trimmed = cell.trim()
+        val trimmed = cell.trim().replace(Regex("(?i)(?<=\\d[-/ ])sept(?=[-/ ]\\d)"), "Sep")
         if (trimmed.isEmpty()) return null
         val parts = trimmed.split(Regex("\\s+"))
         return tryDate(trimmed) ?: tryDate(parts.first()) ?: if (parts.size >= 3) tryDate(parts.take(3).joinToString(" ")) else null
@@ -69,7 +69,7 @@ object StatementParser {
         fun find(skip: Set<Int>, vararg patterns: Regex): Int { for (p in patterns) { val i = c.indices.firstOrNull { it !in skip && p.containsMatchIn(c[it]) }; if (i != null) return i }; return -1 }
         val type = find(emptySet(), Regex("dr ?/ ?cr|cr ?/ ?dr|debit ?/ ?credit|credit ?/ ?debit|^(transaction )?type$"))
         val skip = setOf(type)
-        val date = find(skip, Regex("^(transaction|txn|trans)\\.? ?date"), Regex("^date$"), Regex("^(value|posting|post) ?date"), Regex("date"))
+        val date = find(skip, Regex("^(transaction|txn|trans|tran)\\.? ?date"), Regex("^date$"), Regex("^(value|posting|post) ?date"), Regex("date"))
         val desc = find(skip, Regex("narration|description|particulars|remarks|details"))
         val debit = find(skip, Regex("debit|withdrawal|paid out"), Regex("^dr( amount)?$"))
         val credit = find(skip + debit, Regex("credit|deposit|paid in"), Regex("^cr( amount)?$"))
@@ -78,6 +78,7 @@ object StatementParser {
         return Columns(date, desc, debit, credit, amount, type)
     }
 
+    private val summaryWord = Regex("total|closing|opening|balance|b/?f\\b|brought forward|carried forward|page \\d", RegexOption.IGNORE_CASE)
     private class Draft(val date: LocalDate, val description: StringBuilder, val amountPaise: Long, val direction: Direction)
 
     private fun parseTable(text: String): StatementParse? {
@@ -86,16 +87,20 @@ object StatementParser {
             val headerAt = lines.take(40).indexOfFirst { line -> line.contains(delimiter) && findColumns(splitCsv(line, delimiter)) != null }
             if (headerAt < 0) continue
             val col = findColumns(splitCsv(lines[headerAt], delimiter))!!
-            val drafts = ArrayList<Draft>(); var skipped = 0
+            val drafts = ArrayList<Draft>(); var skipped = 0; var canContinue = false
             for (line in lines.drop(headerAt + 1)) {
                 if (line.isBlank()) continue
                 val cells = splitCsv(line, delimiter)
                 fun cell(i: Int) = if (i >= 0) cells.getOrNull(i).orEmpty() else ""
                 val date = parseDate(cell(col.date))
                 if (date == null) {
-                    // A line with only a description continues the previous narration; totals, balances and page noise are ignored.
+                    // Totals, balances and page noise are ignored; a row carrying money but no readable date is reported, never silently dropped.
+                    val summary = cells.any { summaryWord.containsMatchIn(it) }
+                    val hasMoney = listOf(col.debit, col.credit, col.amount).any { it >= 0 && amountOf(cell(it)) != null }
+                    if (!summary && hasMoney) { skipped++; canContinue = false; continue }
+                    // A line with only a description continues the previous narration, but never one belonging to a skipped row.
                     val onlyDescription = cell(col.desc).isNotBlank() && cells.indices.none { it != col.desc && cells[it].isNotBlank() }
-                    if (onlyDescription && drafts.isNotEmpty()) drafts.last().description.append(' ').append(cell(col.desc).trim())
+                    if (onlyDescription && canContinue && drafts.isNotEmpty()) drafts.last().description.append(' ').append(cell(col.desc).trim())
                     continue
                 }
                 val debit = if (col.debit >= 0) cell(col.debit) else ""; val credit = if (col.credit >= 0) cell(col.credit) else ""
@@ -117,8 +122,8 @@ object StatementParser {
                     }
                     if (a != null && direction != null) a.paise to direction else if (isBlankAmount(cell(col.amount))) { continue } else null
                 }
-                if (resolved == null) { skipped++; continue }
-                drafts += Draft(date, StringBuilder(cell(col.desc).trim()), resolved.first, resolved.second)
+                if (resolved == null) { skipped++; canContinue = false; continue }
+                drafts += Draft(date, StringBuilder(cell(col.desc).trim()), resolved.first, resolved.second); canContinue = true
             }
             return StatementParse(drafts.map(::finish), skipped)
         }
@@ -132,41 +137,68 @@ object StatementParser {
     }
 
     // ---------- plain text (PDF) ----------
-    private val lineStart = Regex("^\\s*(\\d{1,2}[/\\-. ](?:\\d{1,2}|[A-Za-z]{3})[/\\-. ]\\d{2,4})\\b(.*)$")
+    private val lineStart = Regex("^\\s*(\\d{1,2}[/\\-. ](?:\\d{1,2}|[A-Za-z]{3,4})[/\\-. ]\\d{2,4})\\b(.*)$")
     private val moneyToken = Regex("(?<![\\w.])-?\\d[\\d,]*\\.\\d{2}(?!\\d)(?:\\s?(?:Dr|Cr)\\b)?", RegexOption.IGNORE_CASE)
     private val openingLine = Regex("opening balance|balance b/?f|brought forward", RegexOption.IGNORE_CASE)
     private val noiseLine = Regex("page|statement|opening|closing|total|date|balance|ifsc|branch|customer", RegexOption.IGNORE_CASE)
-    private val creditWords = Regex("credit|received|salary|refund|interest|deposit|reversal|cashback|inward|by transfer", RegexOption.IGNORE_CASE)
+    // "credit" alone is deliberately absent: "CREDIT CARD BILL PAY" is money going out.
+    private val creditWords = Regex("credited|received|salary|refund|interest|deposit|reversal|cashback|inward|by transfer|\\bcr\\b", RegexOption.IGNORE_CASE)
+    private val debitWords = Regex("debited|paid|payment|purchase|withdraw|\\batm\\b|\\bpos\\b|upi/dr|\\bdr\\b|\\bbill|charges|\\bfee", RegexOption.IGNORE_CASE)
+
+    private class Entry(val date: LocalDate, val description: StringBuilder, val amount: Amount, val balance: Long?)
 
     private fun parseLines(text: String): StatementParse {
-        val drafts = ArrayList<Draft>(); var skipped = 0; var balance: Long? = null
+        val entries = ArrayList<Entry>(); var skipped = 0; var opening: Long? = null
         for (line in text.lines()) {
             if (line.isBlank()) continue
-            if (openingLine.containsMatchIn(line)) { moneyToken.findAll(line).lastOrNull()?.let { amountOf(it.value)?.let { a -> balance = a.paise } }; continue }
+            if (openingLine.containsMatchIn(line)) { moneyToken.findAll(line).lastOrNull()?.let { amountOf(it.value)?.let { a -> opening = a.paise } }; continue }
             val start = lineStart.matchEntire(line)
             val date = start?.let { parseDate(it.groupValues[1]) }
             if (start == null || date == null) {
-                if (drafts.isNotEmpty() && !moneyToken.containsMatchIn(line) && !noiseLine.containsMatchIn(line)) drafts.last().description.append(' ').append(line.trim())
+                if (entries.isNotEmpty() && !moneyToken.containsMatchIn(line) && !noiseLine.containsMatchIn(line)) entries.last().description.append(' ').append(line.trim())
                 continue
             }
             val rest = start.groupValues[2]
             val tokens = moneyToken.findAll(rest).toList()
             if (tokens.isEmpty()) continue
             val amountToken = if (tokens.size >= 2) tokens[tokens.size - 2] else tokens[0]
-            val amount = amountOf(amountToken.value) ?: run { skipped++; null } ?: continue
-            val newBalance = if (tokens.size >= 2) amountOf(tokens.last().value)?.paise else null
-            val description = rest.substring(0, amountToken.range.first).trim().replace(Regex("^\\d{1,2}[/\\-. ](?:\\d{1,2}|[A-Za-z]{3})[/\\-. ]\\d{2,4}\\s+"), "")
-            val before = balance
-            val direction = amount.hint ?: when {
-                before != null && newBalance != null && before - amount.paise == newBalance -> Direction.DEBIT
-                before != null && newBalance != null && before + amount.paise == newBalance -> Direction.CREDIT
-                else -> if (creditWords.containsMatchIn(description)) Direction.CREDIT else Direction.DEBIT
-            }
-            if (newBalance != null) balance = newBalance
-            drafts += Draft(date, StringBuilder(description), amount.paise, direction)
+            val amount = amountOf(amountToken.value)
+            if (amount == null) { skipped++; continue }
+            val balance = if (tokens.size >= 2) amountOf(tokens.last().value)?.paise else null
+            val description = rest.substring(0, amountToken.range.first).trim().replace(Regex("^\\d{1,2}[/\\-. ](?:\\d{1,2}|[A-Za-z]{3,4})[/\\-. ]\\d{2,4}\\s+"), "")
+            entries += Entry(date, StringBuilder(description), amount, balance)
         }
-        return StatementParse(drafts.map(::finish), skipped)
+        // Statements list either oldest first or newest first. Whichever order makes the balances chain tells which way to read them.
+        fun chains(newer: Entry, older: Entry): Boolean {
+            val a = newer.balance ?: return false; val b = older.balance ?: return false
+            return a == b + newer.amount.paise || a == b - newer.amount.paise
+        }
+        var forward = 0; var backward = 0
+        for (i in 1 until entries.size) {
+            if (chains(entries[i], entries[i - 1])) forward++
+            if (chains(entries[i - 1], entries[i])) backward++
+        }
+        val newestFirst = backward > forward
+        val rows = ArrayList<StatementRow>()
+        for ((i, e) in entries.withIndex()) {
+            val older: Long? = if (newestFirst) (if (i + 1 < entries.size) entries[i + 1].balance else opening) else (if (i > 0) entries[i - 1].balance else opening)
+            val direction = e.amount.hint ?: when {
+                older != null && e.balance != null && e.balance == older + e.amount.paise -> Direction.CREDIT
+                older != null && e.balance != null && e.balance == older - e.amount.paise -> Direction.DEBIT
+                creditWords.containsMatchIn(e.description) -> Direction.CREDIT
+                debitWords.containsMatchIn(e.description) -> Direction.DEBIT
+                else -> null
+            }
+            // Money direction decides what is counted as spending, so a row that cannot be proven is reported instead of guessed.
+            if (direction == null) { skipped++; continue }
+            rows += finish(Draft(e.date, e.description, e.amount.paise, direction))
+        }
+        return StatementParse(rows, skipped)
     }
+
+    /** True for narrations that usually move money rather than spend it: own-account transfers, card bill payments, wallet top-ups and investments. */
+    fun looksLikeMoneyMovement(text: String): Boolean =
+        Regex("\\b(credit card|cc pay(?:ment)?|card payment|card bill|cred|own account|self transfer|self|wallet|fixed deposit|recurring deposit|fd|mutual fund|zerodha|groww|investment|sip)\\b", RegexOption.IGNORE_CASE).containsMatchIn(text)
 
     // ---------- narration ----------
     private fun looksLikeCode(part: String): Boolean = !part.contains(' ') && ((part.length >= 8 && part.any { it.isDigit() } && part.any { it.isLetter() }) || (part.length >= 6 && part.all { it.isDigit() }))
@@ -191,6 +223,6 @@ object StatementParser {
             upper.startsWith("POS") -> d.replace(Regex("^POS\\s+\\S+\\s+", RegexOption.IGNORE_CASE), "").trim()
             else -> null
         }
-        return (merchant?.takeIf { it.isNotBlank() } ?: d.take(60).ifBlank { "Unknown counterparty" }) to reference
+        return (merchant?.takeIf { it.isNotBlank() } ?: d.take(40).ifBlank { "Unknown counterparty" }) to reference
     }
 }
