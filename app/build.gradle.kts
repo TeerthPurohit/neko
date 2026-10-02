@@ -42,6 +42,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // Google's built-in QR scanner for UPI payments: no camera permission needed, nothing is uploaded.
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    // Reads classic .xls spreadsheets on the phone (.xlsx is read by Neko's own reader); nothing is uploaded.
+    implementation("net.sourceforge.jexcelapi:jxl:2.6.12")
     // Reads the text of PDF bank statements on the phone; nothing is uploaded.
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("com.google.firebase:firebase-messaging:24.1.2")

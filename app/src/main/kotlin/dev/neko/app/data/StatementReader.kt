@@ -6,6 +6,7 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import com.tom_roush.pdfbox.text.PDFTextStripper
+import dev.neko.core.Spreadsheets
 import dev.neko.core.StatementParse
 import dev.neko.core.StatementParser
 import kotlinx.coroutines.Dispatchers
@@ -32,10 +33,17 @@ object StatementReader {
                 ?: throw StatementException("I couldn't open that file. Please pick it again.")
             if (bytes.size > MAX_BYTES) throw StatementException(TOO_BIG)
             val isPdf = isPdf(bytes)
-            val text = if (isPdf) pdfText(context, bytes, pdfPassword) else decode(bytes)
-            val parsed = StatementParser.parse(text)
+            // A workbook can have several sheets (summary, transactions, ...); the one that yields the most transactions wins.
+            val texts: List<String> = when {
+                isPdf -> listOf(pdfText(context, bytes, pdfPassword))
+                Spreadsheets.isZip(bytes) -> Spreadsheets.xlsxSheetsAsCsv(bytes) ?: throw StatementException("I couldn't open that Excel file. If it is password protected, open it in Excel and save it as CSV. $NET_BANKING_HINT")
+                Spreadsheets.isOle(bytes) -> xlsSheets(bytes)
+                looksLikeMarkup(bytes) -> decode(bytes).let { page -> Spreadsheets.htmlTablesAsCsv(page).ifEmpty { listOf(page) } } // many banks save an HTML table as ".xls"
+                else -> listOf(decode(bytes))
+            }
+            val parsed = texts.map(StatementParser::parse).maxWithOrNull(compareBy({ it.rows.size }, { -it.skipped })) ?: StatementParse(emptyList(), 0)
             if (parsed.rows.isEmpty()) {
-                val lines = text.lines().count { it.isNotBlank() }
+                val lines = texts.sumOf { text -> text.lines().count { it.isNotBlank() } }
                 throw StatementException(when {
                     isPdf && lines == 0 -> "This PDF has no selectable text (it may be a scanned image), so I can't read it. $NET_BANKING_HINT"
                     isPdf -> "I could read the PDF ($lines lines of text) but couldn't recognise any transactions in it. Statement layouts vary a lot between banks. $NET_BANKING_HINT"
@@ -60,6 +68,32 @@ object StatementReader {
             }
             return out.toByteArray()
         }
+    }
+
+    /** True for HTML or XML text (after an optional byte-order mark and spaces). */
+    private fun looksLikeMarkup(bytes: ByteArray): Boolean = String(bytes, 0, minOf(bytes.size, 512), Charsets.ISO_8859_1).trimStart('﻿', 'ï', '»', '¿', ' ', '\t', '\r', '\n').startsWith("<")
+
+    /** One CSV string per sheet of a classic binary .xls workbook. */
+    private fun xlsSheets(bytes: ByteArray): List<String> {
+        val protectedOrUnsupported = StatementException("I couldn't read that Excel file; it may be password protected or in an unusual format. Open it in Excel and save it as CSV, or download the CSV from net banking.")
+        try {
+            val workbook = jxl.Workbook.getWorkbook(ByteArrayInputStream(bytes), jxl.WorkbookSettings().apply { gcDisabled = true })
+            try {
+                return workbook.sheets.map { sheet ->
+                    (0 until sheet.rows).map { row -> (0 until sheet.columns).map { column -> cellText(sheet.getCell(column, row)) } }
+                        .filter { cells -> cells.any { it.isNotBlank() } }.joinToString("\n") { Spreadsheets.csvLine(it) }
+                }
+            } finally { workbook.close() }
+        } catch (_: jxl.read.biff.BiffException) { throw protectedOrUnsupported
+        } catch (_: java.io.IOException) { throw protectedOrUnsupported
+        } catch (_: RuntimeException) { throw protectedOrUnsupported }
+    }
+    private fun cellText(cell: jxl.Cell): String = when (cell.type) {
+        jxl.CellType.DATE, jxl.CellType.DATE_FORMULA -> (cell as jxl.DateCell).date.let { date ->
+            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ENGLISH).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(date)
+        }
+        jxl.CellType.NUMBER, jxl.CellType.NUMBER_FORMULA -> Spreadsheets.cleanNumber((cell as jxl.NumberCell).value)
+        else -> cell.contents.orEmpty()
     }
 
     /** PDFs start with "%PDF", sometimes after a few stray bytes. */

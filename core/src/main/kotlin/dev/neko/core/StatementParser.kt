@@ -32,6 +32,8 @@ object StatementParser {
     fun parseDate(cell: String): LocalDate? {
         val trimmed = cell.trim().replace(Regex("(?i)(?<=\\d[-/ ])sept(?=[-/ ]\\d)"), "Sep")
         if (trimmed.isEmpty()) return null
+        // Excel stores dates as the number of days since 30 December 1899; accept 2000 to 2099.
+        if (Regex("^\\d{5}(\\.\\d+)?$").matches(trimmed)) { val days = trimmed.substringBefore('.').toLong(); return if (days in 36526..73050) LocalDate.of(1899, 12, 30).plusDays(days) else null }
         val parts = trimmed.split(Regex("\\s+"))
         return tryDate(trimmed) ?: tryDate(parts.first()) ?: if (parts.size >= 3) tryDate(parts.take(3).joinToString(" ")) else null
     }

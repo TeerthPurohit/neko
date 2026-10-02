@@ -22,7 +22,7 @@ import dev.neko.app.data.ImportResult
         title = { Text("Import a bank statement") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("CSV or PDF from your bank. Neko reads it on this phone, skips payments it already noted from SMS, and adds the rest as drafts.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("CSV, Excel (.xls or .xlsx) or PDF from your bank. Neko reads it on this phone, skips payments it already noted from SMS, and adds the rest as drafts.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(account, { account = it.take(40) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Account name (optional)") }, placeholder = { Text("ICICI savings 1234") })
                 OutlinedTextField(password, { password = it.take(64) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("PDF password (if it has one)") },
                     visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))

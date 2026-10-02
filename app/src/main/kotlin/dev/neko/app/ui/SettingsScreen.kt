@@ -27,7 +27,7 @@ import android.net.Uri
             Text("Transaction capture",style=MaterialTheme.typography.titleLarge);StatusPill(if(smsGranted)"SMS permission granted"else"Permission needed",smsGranted)
             Text("ICICI, IDFC FIRST, AU, HDFC, SBI, Axis, and Kotak bank notices are parsed on your phone. Uncertain entries stay as drafts. Neko never asks for your bank login, PIN, or OTP.",color=MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onPermissions){Text("Manage capture permissions")}
-            OutlinedButton(onImportStatement){Text("Import a bank statement (CSV or PDF)")}
+            OutlinedButton(onImportStatement){Text("Import a bank statement (CSV, Excel or PDF)")}
             if(inboxGranted)OutlinedButton({model.scanInbox()},enabled=!state.busy){Text("Scan last 90 days of SMS")}
             else Text("Allow SMS access to also import bank notices that arrived before Neko was set up.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             val context=androidx.compose.ui.platform.LocalContext.current
