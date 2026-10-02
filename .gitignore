@@ -42,3 +42,8 @@ docs/personal-spending-policy.md
 *.key
 *.p12
 *.pfx
+*firebase-adminsdk*.json
+*service-account*.json
+*credentials*.json
+app/google-services.json
+.firebase/

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import pg from 'pg';
 
 export async function migrate(url:string):Promise<void>{
-  const pool=new pg.Pool({connectionString:url,max:1});
+  const pool=new pg.Pool({connectionString:url,max:1,connectionTimeoutMillis:15_000,statement_timeout:30_000});
   const client=await pool.connect();
   try{
     await client.query('BEGIN');

@@ -10,8 +10,9 @@ if(!databaseUrl)throw new Error('DATABASE_URL is not configured');
 const env:Env={DB:new Database(databaseUrl),NEKO_PAIRING_SECRET:process.env.NEKO_PAIRING_SECRET||'',
   MODEL_KEY_ENCRYPTION_KEY:process.env.MODEL_KEY_ENCRYPTION_KEY,
   AGENT_SERVICE_URL:process.env.AGENT_SERVICE_URL||'http://127.0.0.1:8081',AGENT_SERVICE_TOKEN:process.env.AGENT_SERVICE_TOKEN,
-  CHAT_MODELS:process.env.CHAT_MODELS||'xiaomi/mimo-v2.6-pro',CLASSIFIER_MODEL:process.env.CLASSIFIER_MODEL||'typesafe/jev-1.13',
+  CHAT_MODELS:process.env.CHAT_MODELS||'auto,openai/gpt-oss-120b,deepseek/deepseek-v4.1-flash,xiaomi/mimo-v2.6-pro,openai/gpt-6-luna',CLASSIFIER_MODEL:process.env.CLASSIFIER_MODEL||'typesafe/jev-1.13',
   ALLOW_PAID_AI:process.env.ALLOW_PAID_AI||'true',MONTHLY_AI_BUDGET_USD:process.env.MONTHLY_AI_BUDGET_USD||'2',DAILY_AI_REQUESTS:process.env.DAILY_AI_REQUESTS||'100',
+  AI_TURN_BUDGET_USD:process.env.AI_TURN_BUDGET_USD||'0.06',
   FCM_PROJECT_ID:process.env.FCM_PROJECT_ID,FCM_CLIENT_EMAIL:process.env.FCM_CLIENT_EMAIL,FCM_PRIVATE_KEY:process.env.FCM_PRIVATE_KEY};
 const jobs=new Set<Promise<unknown>>();
 const context={waitUntil(task:Promise<unknown>){jobs.add(task);void task.catch(()=>{/* Tasks persist failures for inspection. */}).finally(()=>jobs.delete(task));}};

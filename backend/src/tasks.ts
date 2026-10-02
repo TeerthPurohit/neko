@@ -16,17 +16,19 @@ export async function processTask(env:Env,id:string):Promise<void> {
   if(!user) return;
   try {
     const payload=JSON.parse(task.payload) as {question?:string;transaction_id?:string;expected_updated_at?:number};
-    let title='Neko checked in',body='',proposal:unknown=null;
+    let title='Neko checked in',body='',proposal:unknown=null,model:string|undefined,routing:unknown;
     if(task.kind==='classify') {
       const tx=await env.DB.prepare('SELECT * FROM transactions WHERE user_id=? AND id=?').bind(user.id,payload.transaction_id).first<Tx>();
       if(!tx||tx.updated_at!==payload.expected_updated_at) {
         await env.DB.prepare("UPDATE tasks SET status='done',result='Superseded by a newer transaction' WHERE id=?").bind(id).run();return;
       }
       const result=await classify(env,user,tx);
+      model=result.model;
       title='Category suggestion';body=`Neko suggests ${result.category.toLowerCase()} (${Math.round(result.confidence*100)}% confidence). Review before applying.`;
       proposal={transaction_id:tx.id,category:result.category,expected_updated_at:tx.updated_at,reason:body,confidence:result.confidence,model:result.model};
     } else {
       const result=await chat(env,user,payload.question||'Review the latest synced spending and pending drafts. Offer one useful follow-up; state coverage and last sync.',id,task.kind);
+      model=result.model;routing=result.routing;
       title=task.kind==='chat'?'Neko replied':'Your scheduled check-in';body=result.reply;proposal=result.proposals.length?result.proposals:null;
     }
     const activityId='result:'+id;
@@ -37,7 +39,7 @@ export async function processTask(env:Env,id:string):Promise<void> {
     await env.DB.batch([
       ...(task.kind==='chat'?[env.DB.prepare(`INSERT OR IGNORE INTO chat(id,user_id,role,content,created_at) SELECT ?,?,?,?,? WHERE ${guard}`).bind(id,user.id,'assistant',body,Date.now(),...params)]:[]),
       env.DB.prepare(`INSERT OR IGNORE INTO activity(id,user_id,kind,title,body,proposal,created_at) SELECT ?,?,?,?,?,?,? WHERE ${guard}`).bind(activityId,user.id,task.kind,title,body,proposal?JSON.stringify(proposal):null,Date.now(),...params),
-      env.DB.prepare(`UPDATE tasks SET status='done',result=?,lease_until=0 WHERE id=? AND ${guard}`).bind(JSON.stringify({activity_id:activityId}),id,...params),
+      env.DB.prepare(`UPDATE tasks SET status='done',result=?,lease_until=0 WHERE id=? AND ${guard}`).bind(JSON.stringify({activity_id:activityId,model,routing}),id,...params),
     ]);
   } catch(error) {
     const permanent=error instanceof ApiError && [400,403].includes(error.status);

@@ -23,14 +23,14 @@ fun NekoMascot3D(
     reducedMotion: Boolean,
 ) {
     val description = if (speaking) {
-        "Neko, the 3D cream-and-orange cat with glasses, is replying"
+        "Neko, the white lucky cat with small glasses, is replying"
     } else {
-        "Neko, the animated 3D cream-and-orange cat with glasses and a golden bell"
+        "Neko, the animated white lucky cat with small glasses, a green bib and a gold coin"
     }
 
     AndroidView(
         modifier = modifier.semantics { contentDescription = description },
-        factory = ::NekoMascotWebView,
+        factory = { context -> NekoMascotWebView(context) },
         update = { it.setAgentState(speaking = speaking, reducedMotion = reducedMotion) },
         onRelease = NekoMascotWebView::release,
     )
@@ -64,17 +64,12 @@ private class NekoMascotWebView(context: Context) : WebView(context) {
             ): WebResourceResponse = localResponse(request.url)
 
             override fun onPageFinished(view: WebView, url: String) {
-                pageReady = true
+                pageReady = url == baseUrl
                 applyAgentState()
             }
+
         }
-        loadDataWithBaseURL(
-            baseUrl,
-            page,
-            "text/html",
-            "UTF-8",
-            null,
-        )
+        loadUrl(baseUrl)
     }
 
     fun setAgentState(speaking: Boolean, reducedMotion: Boolean) {
@@ -100,7 +95,10 @@ private class NekoMascotWebView(context: Context) : WebView(context) {
     }
 
     private fun localResponse(uri: Uri): WebResourceResponse {
-        if (uri.host != assetHost) return blockedResponse()
+        if (uri.scheme != "https" || uri.host != assetHost) return blockedResponse()
+        if (uri.path == "/assets/neko/index.html") {
+            return WebResourceResponse("text/html", "UTF-8", ByteArrayInputStream(page.toByteArray(Charsets.UTF_8)))
+        }
 
         val (assetPath, mimeType) = when (uri.path) {
             "/assets/neko/agent.js" -> "neko/agent.js" to "text/javascript"
@@ -139,7 +137,7 @@ private class NekoMascotWebView(context: Context) : WebView(context) {
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'">
+              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'">
               <style>
                 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
                 #halo { position: absolute; inset: 7%; border-radius: 50%; pointer-events: none;
@@ -154,10 +152,10 @@ private class NekoMascotWebView(context: Context) : WebView(context) {
             <body>
               <div id="halo" aria-hidden="true"></div>
               <model-viewer id="neko" src="/assets/models/neko.glb"
-                alt="Neko, a cream-and-orange cat wearing round cyan glasses and a golden bell"
+                alt="Neko, a smiling white lucky cat with small glasses, a raised paw, green bib and gold coin"
                 autoplay animation-name="A warm hello" disable-pan disable-zoom
                 interaction-prompt="none" shadow-intensity="0.7" exposure="1.05"
-                camera-orbit="0deg 72deg auto" field-of-view="30deg"></model-viewer>
+                camera-orbit="0deg 82deg auto" field-of-view="30deg"></model-viewer>
               <script type="module" src="/assets/neko/agent.js"></script>
             </body>
             </html>

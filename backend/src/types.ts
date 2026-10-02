@@ -11,6 +11,7 @@ export interface Env {
   ALLOW_PAID_AI: string;
   MONTHLY_AI_BUDGET_USD: string;
   DAILY_AI_REQUESTS: string;
+  AI_TURN_BUDGET_USD?: string;
   FCM_PROJECT_ID?: string;
   FCM_CLIENT_EMAIL?: string;
   FCM_PRIVATE_KEY?: string;

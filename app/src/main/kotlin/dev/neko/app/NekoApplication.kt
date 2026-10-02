@@ -19,8 +19,8 @@ class NekoApplication: Application() {
     }
     fun configureFirebase() {
         val appId=settings.get("firebase_app_id");val project=settings.get("firebase_project_id");val apiKey=settings.get("firebase_api_key");val sender=settings.get("firebase_sender_id")
-        if(appId.isBlank()||project.isBlank()||apiKey.isBlank()||sender.isBlank())return
         if(com.google.firebase.FirebaseApp.getApps(this).isEmpty()) {
+            if(appId.isBlank()||project.isBlank()||apiKey.isBlank()||sender.isBlank())return
             com.google.firebase.FirebaseApp.initializeApp(this,com.google.firebase.FirebaseOptions.Builder().setApplicationId(appId).setProjectId(project).setApiKey(apiKey).setGcmSenderId(sender).build())
         }
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token -> settings.put("push_token",token);dev.neko.app.agent.AgentWork.syncNow(this) }

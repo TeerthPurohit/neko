@@ -1,0 +1,31 @@
+name: Wake scheduled Neko tasks
+
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: neko-scheduled-wake
+  cancel-in-progress: false
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Wake the backend so its durable scheduler can run
+        env:
+          NEKO_WAKE_URL: ${{ secrets.NEKO_WAKE_URL }}
+        run: |
+          if [ -z "$NEKO_WAKE_URL" ]; then
+            echo "Configure the NEKO_WAKE_URL repository secret."
+            exit 1
+          fi
+          if ! curl --silent --fail --retry 2 --max-time 60 "$NEKO_WAKE_URL" > /dev/null 2>&1; then
+            echo "Backend wake request failed. Queued work remains durable."
+            exit 1
+          fi
+          echo "Backend wake request succeeded."

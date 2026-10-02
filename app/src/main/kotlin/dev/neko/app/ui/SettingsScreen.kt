@@ -9,8 +9,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import android.net.Uri
 
 @Composable fun SettingsScreen(state:NekoState,model:NekoViewModel,smsGranted:Boolean,onBack:()->Unit,onPermissions:()->Unit,onFirebase:()->Unit){
+    val context=LocalContext.current
     var pairing by remember{mutableStateOf(false)};var splitwise by remember{mutableStateOf(false)};var consent by remember{mutableStateOf(false)};var erase by remember{mutableStateOf(false)};var modelKey by remember{mutableStateOf(false)}
     LazyColumn(contentPadding=PaddingValues(NekoTokens.Page),verticalArrangement=Arrangement.spacedBy(24.dp)){
         item{Row(verticalAlignment=Alignment.CenterVertically){IconButton(onBack){Icon(Icons.Outlined.ArrowBack,"Back")};Text("Make Neko yours",style=MaterialTheme.typography.headlineSmall)}}
@@ -38,7 +42,7 @@ import androidx.compose.ui.unit.dp
         }}
         item{Panel(Modifier.fillMaxWidth()){
             Text("Splitwise",style=MaterialTheme.typography.titleLarge);Text("Connect your existing account directly from this phone. Its key stays encrypted on this device; it isn't sent to Neko's backend.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-            PrimaryButton(if(state.splitwiseConnected)"Change connection"else"Connect Splitwise",{splitwise=true},enabled=!state.busy)
+            PrimaryButton(if(state.splitwiseConnected)"Change connection"else"Connect Splitwise",{splitwise=true})
             if(state.splitwiseConnected)TextButton(model::disconnectSplitwise){Text("Disconnect Splitwise")}
         }}
         if(state.transactions.isNotEmpty())item{Panel(Modifier.fillMaxWidth()){
@@ -46,8 +50,15 @@ import androidx.compose.ui.unit.dp
             state.transactions.map{it.account}.distinct().forEach{account->Row(verticalAlignment=Alignment.CenterVertically){Text(account,Modifier.weight(1f));Checkbox(account in state.ownAccounts,{model.setOwned(account,it)})}}
         }}
         item{Panel(Modifier.fillMaxWidth()){
-            Text("Push notifications",style=MaterialTheme.typography.titleLarge);Text("Optional: import your Android Firebase configuration to receive server check-ins sooner. Without it, background sync retrieves updates when Android permits.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onFirebase){Text("Import Firebase configuration")}
+            Text("Push notifications",style=MaterialTheme.typography.titleLarge)
+            if(state.firebaseConfigured){
+                StatusPill("Firebase configured",true)
+                Text("Allow notifications and keep your Neko account connected to receive check-ins. Background sync also retrieves updates when Android permits.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onPermissions){Text("Manage notification permissions")}
+            }else{
+                Text("Import your Android Firebase configuration to receive server check-ins. Without it, background sync retrieves updates when Android permits.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onFirebase){Text("Import Firebase configuration")}
+            }
         }}
         item{Panel(Modifier.fillMaxWidth()){
             Text("Account Aggregator",style=MaterialTheme.typography.titleLarge);StatusPill("Integration pending",false)
@@ -59,7 +70,7 @@ import androidx.compose.ui.unit.dp
         AlertDialog(onDismissRequest={pairing=false},title={Text("Connect your agent")},text={Column(verticalArrangement=Arrangement.spacedBy(12.dp)){Text("Use your deployed HTTPS backend and its pairing secret. OpenRouter keys belong on the backend.");OutlinedTextField(url,{url=it},label={Text("Backend HTTPS URL")},singleLine=true);OutlinedTextField(name,{name=it},label={Text("Your name")},singleLine=true);OutlinedTextField(secret,{secret=it},label={Text("Pairing secret")},visualTransformation=PasswordVisualTransformation(),singleLine=true)}},confirmButton={TextButton({model.pair(url.trim(),secret,name.trim());pairing=false},enabled=url.startsWith("https://")&&secret.length>=32&&name.isNotBlank()){Text("Connect")}},dismissButton={TextButton({pairing=false}){Text("Cancel")}})
     }
     if(modelKey){var key by remember{mutableStateOf("")};AlertDialog(onDismissRequest={key="";modelKey=false},title={Text("Your OpenRouter key")},text={Column(verticalArrangement=Arrangement.spacedBy(12.dp)){Text("The key is sent over HTTPS and encrypted on your backend. It isn't saved on this phone or included in the APK. Connecting enables structured cloud context sharing as described below.");OutlinedTextField(key,{key=it},label={Text("OpenRouter API key")},visualTransformation=PasswordVisualTransformation(),singleLine=true)}},confirmButton={TextButton({val submitted=key;key="";modelKey=false;model.byok(submitted)},enabled=key.startsWith("sk-or-")&&!state.busy){Text("Connect key")}},dismissButton={TextButton({key="";modelKey=false}){Text("Cancel")}})}
-    if(splitwise){var key by remember{mutableStateOf("")};AlertDialog(onDismissRequest={splitwise=false},title={Text("Connect Splitwise locally")},text={Column(verticalArrangement=Arrangement.spacedBy(12.dp)){Text("Create a personal API key at secure.splitwise.com/apps, then enter it here. Neko checks the connection before saving it. This preview uses personal API access.");OutlinedTextField(key,{key=it},label={Text("Your Splitwise API key")},visualTransformation=PasswordVisualTransformation(),singleLine=true)}},confirmButton={TextButton({model.splitwise(key.trim());splitwise=false},enabled=key.isNotBlank()){Text("Connect")}},dismissButton={TextButton({splitwise=false}){Text("Cancel")}})}
+    if(splitwise){var key by remember{mutableStateOf("")};AlertDialog(onDismissRequest={key="";splitwise=false},title={Text("Connect Splitwise locally")},text={Column(verticalArrangement=Arrangement.spacedBy(12.dp)){Text("Sign in at Splitwise's app registration page, register an app if allowed, then generate a personal API key on its details page. Splitwise may require Pro for API access. Neko checks your key before saving it, encrypted on this phone.");OutlinedButton({context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://secure.splitwise.com/apps")))}){Text("Open Splitwise API setup")};OutlinedTextField(key,{key=it},label={Text("Your Splitwise API key")},visualTransformation=PasswordVisualTransformation(),singleLine=true)}},confirmButton={TextButton({val submitted=key.trim();key="";model.splitwise(submitted);splitwise=false},enabled=key.isNotBlank()&&!state.busy){Text("Connect")}},dismissButton={TextButton({key="";splitwise=false}){Text("Cancel")}})}
     if(consent)AlertDialog(onDismissRequest={consent=false},title={Text("Share context with Neko?")},text={Text("Neko will upload the latest 150 structured entries: amounts, times, redacted merchant names, categories, bank aliases, and review/payment status, plus budgets. Relevant portions go to OpenRouter and the selected model provider. Your questions are also sent. Raw SMS, account numbers, references, local notes, bank credentials, and your Splitwise key stay on this device. AI drafts changes for your confirmation. You can disable AI or delete shared context anytime.")},confirmButton={TextButton({model.ai(true);consent=false}){Text("Enable cloud AI")}},dismissButton={TextButton({consent=false}){Text("Keep local")}})
     if(erase)AlertDialog(onDismissRequest={erase=false},title={Text("Delete cloud context?")},text={Text("Delete Neko's shared transaction context, chat, tasks, and responsibilities from this backend and disable cloud AI. Your local ledger remains. Provider retention follows its own policy; this cannot recall data already sent to a model.")},confirmButton={TextButton({model.eraseCloud();erase=false}){Text("Delete cloud context")}},dismissButton={TextButton({erase=false}){Text("Cancel")}})
 }

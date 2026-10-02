@@ -42,9 +42,11 @@ async def run(request: Request):
         payload = AgentRequest.model_validate_json(raw)
     except Exception:
         raise HTTPException(400, 'Invalid structured agent request') from None
-    approved = os.getenv('CHAT_MODELS', 'xiaomi/mimo-v2.6-pro').split(',')
+    approved = os.getenv('CHAT_MODELS', 'auto,openai/gpt-oss-120b,deepseek/deepseek-v4.1-flash,xiaomi/mimo-v2.6-pro,openai/gpt-6-luna').split(',')
     if payload.model not in [x.strip() for x in approved]:
         raise HTTPException(400, 'Model is not approved')
+    if any(m not in [x.strip() for x in approved] for m in payload.allowed_models):
+        raise HTTPException(400, 'Routing candidates are not approved')
     if not payload.consent:
         raise HTTPException(403, 'Cloud AI consent is required')
     try:

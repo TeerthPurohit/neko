@@ -1,5 +1,8 @@
 # Corrections and focused agents
 
+See [How calls and model routing work](model-routing.md) for the complete path
+from a trigger to a specialist answer and the current cost controls.
+
 Neko now saves explicit user corrections in Postgres and consults them on future
 AI tasks, including after a restart. This is persistent preference memory; model
 weights are not retrained. Model adherence is not a guarantee that an error can

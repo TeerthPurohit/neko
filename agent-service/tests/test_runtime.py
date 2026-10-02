@@ -41,7 +41,7 @@ def test_real_graph_and_nanobot_runner_only_draft_changes():
     original = data.model_dump()
     provider = FakeProvider([LLMResponse(None, [draft()]), LLMResponse('Review the food category suggestion.')])
     result = asyncio.run(run_agent(data, provider))
-    assert result['workflow'] == ['coordinator', 'context', 'ledger_agent', 'confirmation_boundary']
+    assert result['workflow'] == ['coordinator', 'model_route', 'context', 'ledger_agent', 'confirmation_boundary']
     assert result['requires_confirmation']
     assert result['proposals'][0]['expected_updated_at'] == 101
     assert result['audit'][0]['effect'] == 'draft_only'

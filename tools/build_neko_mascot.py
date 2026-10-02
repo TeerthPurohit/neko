@@ -32,6 +32,7 @@ class Model:
             "ring": self.torus(),
             "cylinder": self.cylinder(),
             "cone": self.cone(),
+            "ear": self.rounded_ear(),
         }
 
     @staticmethod
@@ -117,6 +118,62 @@ class Model:
         vertices.append((0.0, -0.5, 0.0, 0.0, -1.0, 0.0))
         for i in range(segments):
             indices += [center, i, (i + 1) % segments]
+        return vertices, indices
+
+    @staticmethod
+    def rounded_ear():
+        corners = [(-0.52, -0.45), (0.52, -0.45), (0.0, 0.65)]
+        boundary = []
+        for i, corner in enumerate(corners):
+            before, after = corners[i - 1], corners[(i + 1) % 3]
+            start = tuple(corner[j] * .86 + before[j] * .14 for j in range(2))
+            end = tuple(corner[j] * .86 + after[j] * .14 for j in range(2))
+            for step in range(7):
+                t = step / 6
+                boundary.append(tuple((1-t)**2*start[j] + 2*t*(1-t)*corner[j] + t*t*end[j] for j in range(2)))
+        vertices, indices = [], []
+        size = len(boundary)
+        for factor, z, nz in ((.82, .20, .85), (1.0, .09, .30), (1.0, -.09, -.30), (.82, -.20, -.85)):
+            for i, (x, y) in enumerate(boundary):
+                previous, following = boundary[i-1], boundary[(i+1)%size]
+                nx, ny = following[1]-previous[1], previous[0]-following[0]
+                norm = math.hypot(nx, ny) or 1
+                amount = math.sqrt(1-nz*nz)
+                vertices.append((x*factor, y*factor, z, nx/norm*amount, ny/norm*amount, nz))
+        for layer in range(3):
+            for i in range(size):
+                a, b = layer*size+i, layer*size+(i+1)%size
+                indices.extend((a, b+size, b, a, a+size, b+size))
+        for layer, z, sign in ((0, .20, 1), (3, -.20, -1)):
+            center = len(vertices)
+            vertices.append((0, 0, z, 0, 0, sign))
+            for i in range(size):
+                a, b = layer*size+i, layer*size+(i+1)%size
+                indices.extend((center, a, b) if sign>0 else (center, b, a))
+        return vertices, indices
+
+    @staticmethod
+    def tubes(paths, radius=.01, sides=8):
+        vertices, indices = [], []
+        for points in paths:
+            offset = len(vertices)
+            for i, p in enumerate(points):
+                before, after = points[max(0, i-1)], points[min(len(points)-1, i+1)]
+                dx, dy, dz = (after[j]-before[j] for j in range(3))
+                length = math.sqrt(dx*dx+dy*dy+dz*dz) or 1
+                tangent = (dx/length, dy/length, dz/length)
+                planar = math.hypot(dx, dy) or 1
+                normal = (-dy/planar, dx/planar, 0)
+                binormal = (tangent[1]*normal[2]-tangent[2]*normal[1], tangent[2]*normal[0]-tangent[0]*normal[2], tangent[0]*normal[1]-tangent[1]*normal[0])
+                for side in range(sides):
+                    angle = math.tau*side/sides
+                    n = tuple(normal[j]*math.cos(angle)+binormal[j]*math.sin(angle) for j in range(3))
+                    vertices.append((*(p[j]+radius*n[j] for j in range(3)), *n))
+            for ring in range(len(points)-1):
+                for side in range(sides):
+                    a = offset+ring*sides+side
+                    b = offset+ring*sides+(side+1)%sides
+                    indices.extend((a, b, a+sides, b, b+sides, a+sides))
         return vertices, indices
 
     @staticmethod
@@ -213,124 +270,201 @@ class Model:
         self.animation_channels.append({"sampler": sampler, "target": {"node": node_id, "path": "rotation"}})
 
     def make_mascot(self):
-        swatches = {
-            "outline": ((0.055, 0.11, 0.17, 1.0), 0.40),
-            "cream": ((0.985, 0.967, 0.89, 1.0), 0.62),
-            "goldfur": ((0.96, 0.56, 0.20, 1.0), 0.66),
-            "stripe": ((0.75, 0.31, 0.12, 1.0), 0.74),
-            "ear": ((0.94, 0.39, 0.40, 1.0), 0.72),
-            "muzzle": ((1.0, 0.995, 0.95, 1.0), 0.62),
-            "lens": ((0.27, 0.81, 0.84, 0.32), 0.20),
-            "aqua": ((0.10, 0.75, 0.76, 1.0), 0.35),
-            "gold": ((1.0, 0.68, 0.19, 1.0), 0.30),
-            "bellshadow": ((0.50, 0.26, 0.08, 1.0), 0.48),
-            "eye": ((0.045, 0.10, 0.15, 1.0), 0.35),
-            "shine": ((1.0, 1.0, 0.99, 1.0), 0.22),
-        }
-        for name, (color, roughness) in swatches.items():
-            self.material(name, color, roughness, 0.16 if name == "gold" else 0.0)
+        # Visual authority: LEFT white lucky cat in image.png. Surfaces are actual
+        # meshes, not a picture on a plane. Never inflate dark duplicate shells:
+        # they occlude white fur and turn the cat into a black-capped hybrid.
+        for name, color, roughness, metallic in [
+            ("porcelain", (1.0, .99, .965, 1), .78, 0),
+            ("ink", (.055, .06, .075, 1), .90, 0),
+            ("coral", (1.0, .27, .29, 1), .85, 0),
+            ("red", (.89, .07, .095, 1), .68, 0),
+            ("amber", (1.0, .53, .09, 1), .85, 0),
+            ("green", (.11, .61, .15, 1), .85, 0),
+            ("wave", (.91, 1.0, .87, 1), .90, 0),
+            ("gold", (1.0, .68, .075, 1), .44, .30),
+            ("goldrim", (1.0, .79, .24, 1), .42, .26),
+            ("tongue", (1.0, .33, .36, 1), .80, 0),
+            ("glasses", (.08, .26, .26, 1), .62, .10),
+        ]:
+            self.material(name, color, roughness, metallic)
+        root = self.node("White lucky cat · selected left reference", location=(0, -1.20, 0), parent=None)
+        self.nodes[root]["children"] = []
 
-        root = self.node("Neko · head and body centered", location=(0.0, -1.08, 0.0), parent=None)
-        self.nodes[0]["children"] = []
+        def sphere(name, material, p, scale, parent=root, angle=0):
+            return self.node(name, material=material, location=p, scale=scale,
+                             rotation=(0, 0, math.sin(angle/2), math.cos(angle/2)), parent=parent)
 
-        def sphere(name, material, p, s, parent=root):
-            return self.node(name, material=material, location=p, scale=s, parent=parent)
+        def strokes(name, material, paths, radius=.01, parent=root):
+            self.geometry[name] = self.tubes(paths, radius)
+            return self.node(name, material=material, geometry=name, parent=parent)
 
-        def cylinder_between(name, material, start, end, radius, parent=root):
-            direction = tuple(end[i] - start[i] for i in range(3))
-            length = math.sqrt(sum(value * value for value in direction))
-            center = tuple((start[i] + end[i]) / 2 for i in range(3))
-            return self.node(name, material=material, geometry="cylinder", location=center, scale=(radius, length, radius), rotation=self.quaternion_between_up(direction), parent=parent)
+        def arc(cx, cy, rx, ry, z, start=0, end=math.pi, count=18):
+            return [(cx+rx*math.cos(t), cy+ry*math.sin(t), z)
+                    for t in (start+(end-start)*i/(count-1) for i in range(count))]
 
-        # Sitting body: an ink-colored soft outline under the warm white fur.
-        sphere("Tail crescent · outer", "outline", (0.53, 0.48, -0.24), (0.28, 0.25, 0.22))
-        for i, (p, s) in enumerate([
-            ((0.63, 0.46, -0.24), (0.15, 0.15, 0.14)),
-            ((0.76, 0.57, -0.23), (0.15, 0.16, 0.14)),
-            ((0.73, 0.73, -0.20), (0.15, 0.17, 0.14)),
-        ]):
-            sphere(f"Curled striped tail {i + 1}", "goldfur", p, s)
-        sphere("Tail tip", "cream", (0.62, 0.78, -0.18), (0.13, 0.12, 0.13))
-        sphere("Body outline", "outline", (0.0, 0.64, -0.015), (0.60, 0.70, 0.43))
-        sphere("Soft cream body", "cream", (0.0, 0.67, 0.035), (0.56, 0.66, 0.41))
-        sphere("Paw left outline", "outline", (-0.34, 0.13, 0.15), (0.30, 0.17, 0.34))
-        sphere("Paw left", "cream", (-0.34, 0.16, 0.17), (0.27, 0.14, 0.31))
-        sphere("Paw right outline", "outline", (0.34, 0.13, 0.15), (0.30, 0.17, 0.34))
-        sphere("Paw right", "cream", (0.34, 0.16, 0.17), (0.27, 0.14, 0.31))
-        for paw_x, side in ((-0.41, "Left"), (-0.34, "Middle left"), (-0.27, "Inside left"), (0.27, "Inside right"), (0.34, "Middle right"), (0.41, "Right")):
-            for x_offset in (0.0,):
-                cylinder_between(f"{side} paw crease", "outline", (paw_x + x_offset, 0.09, 0.405), (paw_x + x_offset, 0.15, 0.421), 0.008)
-
-        # Bib, bell, and the dark whisker pads echo the provided lucky-cat art.
-        sphere("Teal bib", "aqua", (0.0, 0.68, 0.406), (0.33, 0.31, 0.060))
-        sphere("Bib glint", "cream", (-0.12, 0.83, 0.452), (0.045, 0.11, 0.016))
-        sphere("Bell loop", "gold", (0.0, 1.015, 0.435), (0.10, 0.045, 0.050))
-        sphere("Bell", "gold", (0.0, 0.935, 0.481), (0.145, 0.14, 0.12))
-        sphere("Bell lower rim", "bellshadow", (0.0, 0.90, 0.556), (0.12, 0.018, 0.015))
-        cylinder_between("Bell slot", "bellshadow", (0.0, 0.905, 0.572), (0.0, 0.925, 0.574), 0.010)
-
-        # Raised paw gets its own animated pivot so the model greets and talks.
-        arm = self.node("Greet · waving paw", location=(0.40, 0.84, 0.12), parent=root)
-        cylinder_between("Raised arm outline", "outline", (0.0, 0.0, 0.0), (0.18, 0.36, 0.06), 0.205, arm)
-        cylinder_between("Raised arm", "cream", (0.0, 0.02, 0.012), (0.18, 0.37, 0.07), 0.17, arm)
-        sphere("Paw outline · wave", "outline", (0.20, 0.45, 0.08), (0.25, 0.22, 0.21), arm)
-        sphere("Paw · wave", "cream", (0.20, 0.47, 0.12), (0.215, 0.185, 0.18), arm)
-        for x in (0.12, 0.20, 0.28):
-            cylinder_between("Paw crease · wave", "outline", (x, 0.38, 0.287), (x, 0.43, 0.298), 0.008, arm)
-        self.animate_rotation(arm, [(0.0, -0.06), (0.42, 0.27), (0.84, -0.05), (1.26, 0.23), (1.68, -0.06)])
-
-        # Head, soft ink outline, plush tabby ears, and a bright white face.
-        head = self.node("Head pivot", location=(0.0, 1.50, 0.0), parent=root)
-        self.nodes[head]["children"] = []
-        sphere("Head outline", "outline", (0.0, 0.03, -0.006), (0.63, 0.58, 0.43), head)
-        sphere("Golden head", "goldfur", (0.0, 0.03, 0.027), (0.592, 0.545, 0.407), head)
-        for sign, label in ((-1, "Left"), (1, "Right")):
-            self.node(f"{label} ear outline", material="outline", geometry="cone", location=(sign * 0.395, 0.425, -0.015), scale=(0.285, 0.42, 0.225), rotation=(0.0, 0.0, -sign * 0.25, 0.969))
-            self.node(f"{label} golden ear", material="goldfur", geometry="cone", location=(sign * 0.395, 0.435, 0.012), scale=(0.25, 0.37, 0.20), rotation=(0.0, 0.0, -sign * 0.25, 0.969))
-            self.node(f"{label} rosy ear", material="ear", geometry="cone", location=(sign * 0.395, 0.445, 0.175), scale=(0.132, 0.265, 0.040), rotation=(0.0, 0.0, -sign * 0.25, 0.969))
-        sphere("White face mask", "muzzle", (0.0, -0.075, 0.359), (0.52, 0.34, 0.125), head)
-        sphere("Left cheek", "cream", (-0.19, -0.10, 0.431), (0.205, 0.165, 0.075), head)
-        sphere("Right cheek", "cream", (0.19, -0.10, 0.431), (0.205, 0.165, 0.075), head)
-        sphere("Left muzzle", "muzzle", (-0.11, -0.13, 0.486), (0.15, 0.13, 0.055), head)
-        sphere("Right muzzle", "muzzle", (0.11, -0.13, 0.486), (0.15, 0.13, 0.055), head)
-        sphere("Nose", "ear", (0.0, -0.062, 0.548), (0.055, 0.043, 0.028), head)
-        cylinder_between("Mouth stem", "outline", (0.0, -0.09, 0.55), (0.0, -0.15, 0.55), 0.008, head)
-        cylinder_between("Smile left", "outline", (0.0, -0.15, 0.55), (-0.07, -0.20, 0.54), 0.009, head)
-        cylinder_between("Smile right", "outline", (0.0, -0.15, 0.55), (0.07, -0.20, 0.54), 0.009, head)
-
-        # Little amber tabby marks above the round cyan-accented glasses.
-        for index, (x, y, z, sx, sy, angle) in enumerate([
-            (-0.24, 0.40, 0.275, 0.045, 0.145, -0.33),
-            (-0.12, 0.47, 0.305, 0.035, 0.12, -0.13),
-            (0.12, 0.47, 0.305, 0.035, 0.12, 0.13),
-            (0.24, 0.40, 0.275, 0.045, 0.145, 0.33),
-        ]):
-            self.node(f"Tabby forehead mark {index + 1}", material="stripe", location=(x, y, z), scale=(sx, sy, 0.017), rotation=(0.0, 0.0, math.sin(angle / 2), math.cos(angle / 2)), parent=head)
-
-        # Two lenses, glossy eyes, an ink-and-teal frame, and its bridge.
-        for sign, label in ((-1, "Left"), (1, "Right")):
-            x = sign * 0.235
-            sphere(f"{label} eye white", "shine", (x, 0.085, 0.452), (0.108, 0.14, 0.044), head)
-            sphere(f"{label} pupil", "eye", (x + sign * 0.018, 0.075, 0.492), (0.048, 0.080, 0.023), head)
-            sphere(f"{label} eye catchlight", "shine", (x + sign * 0.009, 0.108, 0.514), (0.018, 0.029, 0.011), head)
-            self.node(f"{label} teal glasses rim", material="aqua", geometry="ring", location=(x, 0.082, 0.510), scale=(0.225, 0.215, 0.027), parent=head)
-            self.node(f"{label} glasses outline", material="outline", geometry="ring", location=(x, 0.082, 0.524), scale=(0.207, 0.197, 0.035), parent=head)
-            sphere(f"{label} transparent lens", "lens", (x, 0.082, 0.522), (0.171, 0.163, 0.019), head)
-            cylinder_between(f"{label} glasses arm", "outline", (sign * 0.42, 0.096, 0.46), (sign * 0.55, 0.132, 0.36), 0.018, head)
-        cylinder_between("Glasses bridge", "outline", (-0.057, 0.09, 0.526), (0.057, 0.09, 0.526), 0.024, head)
-
-        # Three whiskers per side; laid against the muzzle to read at phone size.
-        for sign, label in ((-1, "Left"), (1, "Right")):
-            for whisker in range(3):
-                y = -0.12 + (whisker - 1) * 0.075
-                cylinder_between(f"{label} whisker {whisker + 1}", "outline", (sign * 0.28, y, 0.497), (sign * (0.47 + 0.02 * abs(whisker - 1)), y + (whisker - 1) * 0.055, 0.46), 0.0065, head)
-
-        self.animate_rotation(head, [(0.0, -0.018), (0.55, 0.018), (1.1, -0.018), (1.65, 0.008), (2.2, -0.018)])
-
-        # Tiny supporting toes on the cream feet and a warm floor shadow.
+        # Low seated body and short paws; the much wider head leads the silhouette.
+        sphere("Plump white body", "porcelain", (0, .63, .01), (.54, .62, .37))
         for sign in (-1, 1):
-            for i in (-1, 0, 1):
-                sphere("Paw toe", "cream", (sign * 0.34 + i * 0.09, 0.165, 0.398), (0.045, 0.055, 0.035))
+            sphere("White seated haunch", "porcelain", (sign*.38, .30, .06), (.23, .27, .30))
+            sphere("Amber haunch spot", "amber", (sign*.47, .32, .27), (.12, .15, .045))
+            sphere("Dark center of haunch spot", "ink", (sign*.49, .34, .303), (.057, .075, .018))
+            sphere("Short white foot", "porcelain", (sign*.32, .10, .20), (.25, .11, .26))
+        strokes("Foot toe creases", "ink", [[(x, .07, .447), (x, .115, .455)]
+                    for x in (-.41, -.33, -.25, .25, .33, .41)], .006)
+        # A small white tail stays behind the seated body.
+        sphere("White tail curl", "porcelain", (.48, .45, -.18), (.17, .23, .17))
+        sphere("Amber tail patch", "amber", (.58, .49, -.06), (.085, .105, .045))
+
+        # Green triangular bib with real repeated wave geometry (one merged mesh).
+        self.node("Green wave-pattern bib", material="green", geometry="ear",
+                  location=(0, .99, .405), scale=(1.0, .45, .18),
+                  rotation=(0, 0, 1, 0), parent=root)
+        waves = []
+        for row, y in enumerate((.84, .93, 1.02, 1.11)):
+            for column in range(-4, 5):
+                x = column*.14 + (.07 if row%2 else 0)
+                for radius in (.068, .043, .020):
+                    # Clip each scallop to the actual triangular front instead
+                    # of omitting whole side motifs behind the central bell.
+                    segment = []
+                    for p in arc(x, y, radius, radius*.75, .456, count=20):
+                        half_width = .405*(p[1]-.705)/.475
+                        if .76 < p[1] < 1.145 and abs(p[0]) < half_width-.018:
+                            segment.append(p)
+                        else:
+                            if len(segment)>1:
+                                waves.append(segment)
+                            segment = []
+                    if len(segment)>1:
+                        waves.append(segment)
+        strokes("Dense ivory seigaiha bib waves", "wave", waves, .0065)
+
+        # Red collar follows the neckline and remains readable beneath the head.
+        collar = [(.49*math.cos(t), 1.18-.035*math.sin(t), .025+.43*math.sin(t))
+                  for t in (math.tau*i/64 for i in range(65))]
+        strokes("Continuous red collar", "red", [collar], .042)
+        sphere("Gold bell loop", "gold", (0, 1.13, .48), (.06, .05, .035))
+        sphere("Gold bell", "gold", (0, 1.035, .49), (.12, .115, .10))
+        strokes("Bell rim and slot", "ink", [arc(0, 1.035, .108, .022, .583, math.pi, math.tau), [(0, 1.024, .591), (0, .974, .588)]], .007)
+        sphere("Bell keyhole", "ink", (0, 1.016, .591), (.018, .022, .006))
+
+        # Tall oval coin, held by the resting paw. Three conventional lucky-cat
+        # coin characters are authored as raised strokes, with no font dependency.
+        coin = self.node("Gold coin · held in resting paw", location=(.055, .43, .46),
+                         rotation=(0, 0, math.sin(-.14/2), math.cos(-.14/2)), parent=root)
+        sphere("Oval gold coin", "gold", (0, 0, 0), (.27, .43, .072), coin)
+        self.node("Coin raised gold rim", material="goldrim", geometry="ring", location=(0, 0, .061),
+                  scale=(.238, .389, .10), parent=coin)
+        characters = [
+            # 千
+            [(-.075,.29,.080), (.07,.315,.080)],
+            [(-.095,.245,.083), (.095,.245,.083)],
+            [(0,.32,.083), (0,.155,.083)],
+            # 万
+            [(-.10,.105,.084), (.105,.105,.084)],
+            [(.025,.102,.084), (-.01,.01,.084), (-.08,-.04,.084)],
+            [(.00,.055,.084), (.078,.055,.084), (.075,-.035,.084), (.028,-.055,.084)],
+            # 両
+            [(-.105,-.12,.083), (.105,-.12,.083)],
+            [(-.086,-.14,.083), (-.086,-.29,.079)],
+            [(.086,-.14,.083), (.086,-.29,.079)],
+            [(-.086,-.14,.083), (.086,-.14,.083)],
+            [(-.04,-.12,.083), (-.04,-.255,.080)],
+            [(.04,-.12,.083), (.04,-.255,.080)],
+            [(-.086,-.23,.082), (.086,-.23,.082)],
+        ]
+        strokes("Coin lettering · 千万両", "ink", characters, .014, coin)
+
+        # Left arm overlaps the upper coin, rather than becoming a separate lobe.
+        strokes("Resting white arm", "porcelain", [[(-.43,.99,.19),(-.44,.90,.24),(-.38,.80,.34),(-.25,.72,.44)]], .135)
+        sphere("Amber shoulder spot", "amber", (-.46,.93,.345), (.092,.14,.030), angle=-.28)
+        sphere("Dark shoulder marking", "ink", (-.49,.94,.372), (.042,.069,.016), angle=-.28)
+        sphere("Paw holding coin", "porcelain", (-.19,.705,.54), (.17,.092,.092), angle=-.35)
+        strokes("Resting paw creases", "ink", [[(x,.694,.615),(x+.014,.742,.602)] for x in (-.27,-.21,-.15)], .0055)
+
+        # Right paw curves up alongside the face; everything follows its pivot.
+        arm = self.node("Raised lucky paw pivot", location=(.46,.91,.045), parent=root)
+        points = []
+        for i in range(22):
+            t = i/21
+            points.append((2*(1-t)*t*.34+t*t*.25, 2*(1-t)*t*.20+t*t*.73, .12*t*t))
+        strokes("Curved raised white arm", "porcelain", [points], .13, arm)
+        sphere("Rounded raised paw", "porcelain", (.25,.73,.13), (.175,.15,.14), arm)
+        strokes("Raised paw toe creases", "ink", [[(x,.67,.251),(x-.008,.727,.266)] for x in (.18,.25,.32)], .006, arm)
+        self.animate_rotation(arm, [(0,-.035),(.7,.060),(1.4,-.035),(2.1,.035),(2.8,-.035),(3.5,-.035)])
+
+        head = self.node("Broad white head and ears", location=(0,1.60,.035), parent=root)
+        sphere("Wide porcelain face", "porcelain", (0,0,0), (.72,.54,.435), head)
+        for sign, label in ((-1,"Left"),(1,"Right")):
+            angle = -sign*.18
+            self.node(label+" pointed white ear", material="porcelain", geometry="ear",
+                      location=(sign*.46,.47,-.012), scale=(.52,.51,.79),
+                      rotation=(0,0,math.sin(angle/2),math.cos(angle/2)),parent=head)
+            self.node(label+" pink inner ear", material="coral", geometry="ear",
+                      location=(sign*.465,.487,.157), scale=(.30,.315,.08),
+                      rotation=(0,0,math.sin(angle/2),math.cos(angle/2)),parent=head)
+
+        def face_z(x,y,offset=.009):
+            return .435*math.sqrt(max(.012,1-(x/.72)**2-(y/.54)**2))+offset
+
+        def face_patch(name, material, cx, cy, rx, ry):
+            # Paint follows the head's curvature, so cheeks and crown never float.
+            vertices = [(cx,cy,face_z(cx,cy),0,0,1)]
+            indices = []
+            for i in range(49):
+                angle = math.tau*i/48
+                x,y = cx+rx*math.cos(angle),cy+ry*math.sin(angle)
+                z = face_z(x,y)
+                n=(x/.72**2,y/.54**2,z/.435**2)
+                length=math.sqrt(sum(a*a for a in n))
+                vertices.append((x,y,z,*(a/length for a in n)))
+            for i in range(48):
+                indices.extend((0,i+1,i+2))
+            self.geometry[name]=(vertices,indices)
+            self.node(name,material=material,geometry=name,parent=head)
+
+        face_patch("Golden crown patch","amber",0,.405,.17,.09)
+        face_patch("Dark crown center","ink",0,.438,.122,.045)
+        for sign in (-1,1):
+            face_patch("Coral cheek "+str(sign),"coral",sign*.49,-.18,.115,.115)
+        gold_marks=[]
+        for sign in (-1,1):
+            for i in range(3):
+                x=sign*(.18+i*.076)
+                gold_marks.append([(x,.23,face_z(x,.23,.016)),(x+sign*.01,.31-i*.018,face_z(x+sign*.01,.31-i*.018,.016))])
+        strokes("Small gold forehead strokes","amber",gold_marks,.0085,head)
+
+        # Closed smiling eyes and painted whiskers, not oversized open pupils.
+        expression=[]
+        for sign in (-1,1):
+            cx=sign*.235
+            points=[]
+            for i in range(19):
+                t=i/18
+                x=cx-.145+.29*t
+                y=.065+.075*math.sin(math.pi*t)
+                points.append((x,y,face_z(x,y,.022)))
+            expression.append(points)
+            for i in (-1,0,1):
+                expression.append([(sign*.42,-.18+i*.045,face_z(sign*.42,-.18+i*.045,.022)),
+                                   (sign*.59,-.18+i*.073,face_z(sign*.59,-.18+i*.073,.022))])
+        expression += [[(0,-.105,.442),(0,-.16,.435)],
+                       [(0,-.16,.435),(-.03,-.205,.427),(-.085,-.221,.415),(-.135,-.205,.410),(-.155,-.172,.414)],
+                       [(0,-.16,.435),(.03,-.205,.427),(.085,-.221,.415),(.135,-.205,.410),(.155,-.172,.414)]]
+        strokes("Closed smiles and whiskers","ink",expression,.0105,head)
+        sphere("Small dark nose","ink",(0,-.093,.45),(.038,.025,.014),head)
+        sphere("Happy open mouth","ink",(0,-.249,.400),(.065,.078,.025),head)
+        sphere("Pink tongue","tongue",(0,-.271,.422),(.037,.050,.008),head)
+
+        # Thin unobtrusive glasses retain Neko's established character feature.
+        self.geometry["thin-glasses"] = self.torus(tube=.025)
+        for sign in (-1,1):
+            self.node("Small round glasses "+str(sign),material="glasses",geometry="thin-glasses",
+                      location=(sign*.235,.087,.471),scale=(.162,.150,.08),parent=head)
+        strokes("Glasses bridge and temples","glasses",[
+                    [(-.073,.10,.472),(0,.115,.474),(.073,.10,.472)],
+                    [(-.40,.10,.463),(-.58,.14,.29)],[(.40,.10,.463),(.58,.14,.29)]],.0045,head)
+        self.animate_rotation(head,[(0,-.011),(.9,.012),(1.8,-.011),(2.7,.006),(3.5,-.011)])
 
     def to_glb(self) -> bytes:
         document = {

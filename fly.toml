@@ -1,4 +1,4 @@
-app = "neko-teerth"
+app = "your-neko-app"
 primary_region = "sin"
 
 [build]
@@ -7,11 +7,12 @@ primary_region = "sin"
 [env]
   PORT = "8080"
   AGENT_SERVICE_URL = "http://127.0.0.1:8081"
-  CHAT_MODELS = "xiaomi/mimo-v2.6-pro"
+  CHAT_MODELS = "auto,openai/gpt-oss-120b,deepseek/deepseek-v4.1-flash,xiaomi/mimo-v2.6-pro,openai/gpt-6-luna"
   CLASSIFIER_MODEL = "typesafe/jev-1.13"
   ALLOW_PAID_AI = "true"
   MONTHLY_AI_BUDGET_USD = "2"
   DAILY_AI_REQUESTS = "100"
+  AI_TURN_BUDGET_USD = "0.06"
 
 [http_service]
   internal_port = 8080

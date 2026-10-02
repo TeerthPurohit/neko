@@ -5,7 +5,7 @@ import { corrections } from './learning';
 
 type Message = { role: string; content?: string | null; tool_call_id?: string; tool_calls?: ToolCall[] };
 type ToolCall = { id: string; function: { name: string; arguments: string } };
-export interface AgentAnswer { reply: string; proposals: ReturnType<typeof confirmedProposal>[]; model: string; cost: number }
+export interface AgentAnswer { reply: string; proposals: ReturnType<typeof confirmedProposal>[]; model: string; cost: number; routing:{source:string;confidence:number;model:string} }
 
 export async function reserve(env: Env, user: User, cost = 0.02): Promise<{day:string;cost:number}> {
   const day = new Date().toISOString().slice(0,10), month=day.slice(0,7);
@@ -110,12 +110,14 @@ export async function chat(env: Env,user: User,question: string,taskId='manual',
   const budgets=(await env.DB.prepare('SELECT category,amount_paise FROM budgets WHERE user_id=?').bind(user.id).all()).results;
   const history=(await env.DB.prepare('SELECT role,content FROM chat WHERE user_id=? ORDER BY created_at DESC LIMIT 8').bind(user.id).all()).results.reverse();
   const learned=await corrections(env,user.id);
-  const reservation=await reserve(env,user,0.06);
+  const turnBudget=Number(env.AI_TURN_BUDGET_USD??'0.06');
+  if(!Number.isFinite(turnBudget)||turnBudget<0.005||turnBudget>1)throw new ApiError(503,'Configure a per-turn AI budget between $0.005 and $1');
+  const reservation=await reserve(env,user,turnBudget);
   let charged=false;
   try {
     const response=await fetch(env.AGENT_SERVICE_URL.replace(/\/$/,'')+'/internal/run',{
       method:'POST',headers:{Authorization:'Bearer '+env.AGENT_SERVICE_TOKEN,'Content-Type':'application/json'},
-      body:JSON.stringify({user_id:user.id,task_id:taskId,task_kind:taskKind,corrections:learned,api_key:key,model:user.model,question,consent:true,last_sync:user.last_sync,transactions:rows,budgets,history}),signal:AbortSignal.timeout(25_000),
+      body:JSON.stringify({user_id:user.id,task_id:taskId,task_kind:taskKind,corrections:learned,api_key:key,model:user.model,allowed_models:user.model==='auto'?[]:[user.model],max_cost:turnBudget,question,consent:true,last_sync:user.last_sync,transactions:rows,budgets,history}),signal:AbortSignal.timeout(60_000),
     });
     if (!response.ok) throw new ApiError(response.status===429?429:502,'Agent service is unavailable; this task will retry');
     const result=object(await response.json());
@@ -124,7 +126,11 @@ export async function chat(env: Env,user: User,question: string,taskId='manual',
       if (!rows.some(t=>t.id===proposal.transaction_id && t.updated_at===proposal.expected_updated_at)) throw new ApiError(502,'Agent proposed a transaction outside available context');
       return proposal;
     }):[];
-    const answer={reply:text(result.reply,6000),proposals,model:user.model,cost:typeof result.cost==='number'&&Number.isFinite(result.cost)&&result.cost>=0?result.cost:reservation.cost};
+    const selected=text(result.model,100);
+    if(selected==='auto'||selected.endsWith(':free')||selected.includes('router')||!/^[-a-z0-9_.]+\/[-a-z0-9_.]+$/.test(selected)||(user.model!=='auto'&&selected!==user.model))throw new ApiError(502,'Agent returned an invalid model selection');
+    const routing=object(result.routing??{source:'manual',confidence:1,model:selected});
+    const answer={reply:text(result.reply,6000),proposals,model:selected,cost:typeof result.cost==='number'&&Number.isFinite(result.cost)&&result.cost>=0?result.cost:reservation.cost,
+      routing:{source:text(routing.source,100),confidence:typeof routing.confidence==='number'&&Number.isFinite(routing.confidence)?Math.max(0,Math.min(1,routing.confidence)):0,model:selected}};
     await settle(env,user.id,reservation,answer.cost);charged=true;
     return answer;
   } catch(error) {

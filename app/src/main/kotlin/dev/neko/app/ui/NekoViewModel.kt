@@ -23,7 +23,7 @@ data class NekoState(
     val theme:String="system",val reducedMotion:Boolean=false,val aiEnabled:Boolean=false,val paired:Boolean=false,val paused:Boolean=false,
     val backendUrl:String="",val splitwiseConnected:Boolean=false,val model:String="xiaomi/mimo-v2.6-pro",val models:List<String> = listOf("xiaomi/mimo-v2.6-pro"),
     val lastSync:Long=0,val usageRequests:Int=0,val usageCost:Double=0.0,val userName:String="You",val pendingTasks:Int=0,
-    val hasModelKey:Boolean=false,val offlineProfile:Boolean=false,val byokDeferred:Boolean=false,
+    val hasModelKey:Boolean=false,val offlineProfile:Boolean=false,val byokDeferred:Boolean=false,val firebaseConfigured:Boolean=false,
 )
 
 class NekoViewModel(private val app:NekoApplication):ViewModel() {
@@ -48,9 +48,11 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
                 theme=s.theme,reducedMotion=s.reducedMotion,aiEnabled=s.aiEnabled,paired=s.deviceToken.isNotBlank(),paused=s.paused,backendUrl=s.backendUrl,splitwiseConnected=s.splitwiseKey.isNotBlank(),lastSync=s.get("last_sync","0").toLong(),model=s.get("model","xiaomi/mimo-v2.6-pro"),models=s.get("models","xiaomi/mimo-v2.6-pro").split(','),
                 usageRequests=(0 until usage.length()).sumOf {usage.getJSONObject(it).getInt("requests")},usageCost=(0 until usage.length()).sumOf {usage.getJSONObject(it).getDouble("cost")},userName=s.get("user_name","You"),pendingTasks=agent.optJSONArray("tasks")?.let { tasks->(0 until tasks.length()).count {tasks.getJSONObject(it).optString("status") in listOf("queued","running")} }?:0,
                 hasModelKey=s.get("has_model_key","false").toBoolean(),offlineProfile=s.get("offline_profile","false").toBoolean(),byokDeferred=s.get("byok_deferred","false").toBoolean(),
+                firebaseConfigured=com.google.firebase.FirebaseApp.getApps(app).isNotEmpty(),
             )
         }
-        mutable.value=result
+        // A concurrent data refresh must not restore an action's old busy/error state.
+        mutable.update { current -> result.copy(busy=current.busy,error=current.error,message=current.message) }
     }
     fun action(block:suspend ()->Unit) {
         if(mutable.value.busy)return

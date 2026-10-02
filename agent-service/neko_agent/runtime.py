@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 from copy import deepcopy
 from typing import Any, Literal, TypedDict
@@ -14,6 +15,7 @@ from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.providers.base import LLMProvider, LLMResponse, LLMUsage, ToolCallRequest
 from nanobot.utils.llm_runtime import GenerationSettings, LLMRuntime
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from .routing import DEFAULT_MODELS, ModelRoute, choose_model
 
 CATEGORIES = ['FOOD', 'GROCERIES', 'TRANSPORT', 'SHOPPING', 'BILLS', 'HEALTH',
               'ENTERTAINMENT', 'RENT', 'INCOME', 'REFUND', 'TRANSFER', 'OTHER']
@@ -60,6 +62,9 @@ class AgentRequest(BaseModel):
     history: list[dict[str, str]] = Field(max_length=8)
     task_kind: Literal['chat', 'checkin'] = 'chat'
     corrections: list[Correction] = Field(default_factory=list, max_length=30)
+    # Empty means discover the eligible low-cost pool from the live catalog.
+    allowed_models: list[str] = Field(default_factory=list, max_length=32)
+    max_cost: float = Field(default=0.06, gt=0, le=1, allow_inf_nan=False)
 
 
 SPECIALISTS = {
@@ -213,9 +218,11 @@ class FinanceTool(Tool):
 
 class OpenRouterProvider(LLMProvider):
     """nanobot provider using a transient backend key with bounded calls and timeouts."""
-    def __init__(self, key: str, model: str, transport: httpx.AsyncBaseTransport | None = None):
+    def __init__(self, key: str, model: str, transport: httpx.AsyncBaseTransport | None = None,
+                 max_cost: float = 0.06, initial_cost: float = 0):
         super().__init__(api_key=key, api_base='https://openrouter.ai/api/v1', provider_name='openrouter')
-        self.model, self.transport, self.calls, self.cost = model, transport, 0, 0.0
+        self.model, self.transport, self.calls, self.cost = model, transport, 0, initial_cost
+        self.max_cost = max_cost
 
     def get_default_model(self) -> str:
         return self.model
@@ -224,19 +231,29 @@ class OpenRouterProvider(LLMProvider):
                    reasoning_effort=None, tool_choice=None) -> LLMResponse:
         if self.calls >= 3:
             raise ValueError('Per-turn model call limit reached')
+        # Conservative UTF-8 byte bound plus framing allowance. Provider price
+        # ceilings cover prompt and generated reasoning as well as visible text.
+        output_limit = min(max_tokens, 4096)
+        input_bound = len(json.dumps([messages, tools or []], ensure_ascii=False).encode('utf-8')) + 4096
+        call_bound = input_bound * 0.5 / 1_000_000 + output_limit / 1_000_000
+        if self.cost + call_bound > self.max_cost:
+            raise ValueError('Per-turn cost allowance reached')
         self.calls += 1
-        async with httpx.AsyncClient(timeout=6.0, transport=self.transport) as client:
+        async with httpx.AsyncClient(timeout=15.0, transport=self.transport) as client:
             response = await client.post('https://openrouter.ai/api/v1/chat/completions',
                 headers={'Authorization': 'Bearer ' + (self.api_key or ''), 'X-Title': 'Neko'},
                 json={'model': self.model, 'messages': messages, 'tools': tools or [],
-                      'max_tokens': min(max_tokens, 700), 'temperature': temperature,
-                      'provider': {'data_collection': 'deny'}, 'usage': {'include': True}})
+                      'max_tokens': output_limit,
+                      'provider': {'data_collection': 'deny', 'require_parameters': True,
+                                   'sort': 'price', 'max_price': {'prompt': 0.5, 'completion': 1}},
+                      'usage': {'include': True}})
             # Do not include request headers, key, or provider response body in errors.
             if response.status_code != 200:
                 raise ValueError('OpenRouter temporarily rejected the request')
             data = response.json()
         usage = data.get('usage') or {}
-        self.cost += max(0.0, float(usage.get('cost', 0.02)))
+        billed = float(usage.get('cost', call_bound))
+        self.cost += billed if math.isfinite(billed) and billed >= 0 else call_bound
         message = data['choices'][0]['message']
         tool_calls = message.get('tool_calls') or []
         if len(tool_calls) > 4:
@@ -263,10 +280,20 @@ async def run_agent(request: AgentRequest, provider: LLMProvider | None = None) 
     # New registry and runtime per turn prevent cross-user state or proposals leaking.
     proposals: list[dict] = []
     audit: list[dict] = []
-    active_provider = provider or OpenRouterProvider(request.api_key.get_secret_value(), request.model)
+    active_provider = provider
+    route = ModelRoute(request.model, 'manual', 1.0, 0.0)
 
-    def coordinate(state: AgentState) -> AgentState:
-        return {'specialist': select_specialist(request), 'trace': ['coordinator']}
+    async def coordinate(state: AgentState) -> AgentState:
+        nonlocal active_provider, route
+        specialist = select_specialist(request)
+        if request.model == 'auto':
+            route = await choose_model(request.api_key.get_secret_value(), request.question,
+                                       specialist, request.allowed_models, request.history)
+        if request.model != 'auto' and request.allowed_models and route.model not in request.allowed_models:
+            raise ValueError('Model is not approved')
+        active_provider = active_provider or OpenRouterProvider(request.api_key.get_secret_value(),
+            route.model, max_cost=request.max_cost, initial_cost=route.cost)
+        return {'specialist': specialist, 'trace': ['coordinator', 'model_route']}
 
     def context(state: AgentState) -> AgentState:
         specialist = state['specialist']
@@ -301,8 +328,8 @@ async def run_agent(request: AgentRequest, provider: LLMProvider | None = None) 
         registry = ToolRegistry()
         for name in SPECIALISTS[state['specialist']][1]:
             registry.register(FinanceTool(name, request, proposals, audit))
-        runtime = LLMRuntime(provider=active_provider, model=request.model,
-                             generation=GenerationSettings(temperature=0.3, max_tokens=700),
+        runtime = LLMRuntime(provider=active_provider, model=route.model,
+                             generation=GenerationSettings(max_tokens=4096),
                              context_window_tokens=16_000)
         result = await AgentRunner().run(AgentRunSpec(initial_messages=state['messages'], tools=registry,
             runtime=runtime, max_iterations=3, max_tool_result_chars=6000, provider_retry_mode='none',
@@ -310,8 +337,10 @@ async def run_agent(request: AgentRequest, provider: LLMProvider | None = None) 
         if result.error:
             raise ValueError('Agent provider unavailable')
         return {'answer': {'reply': result.final_content or 'Review my suggestions. No ledger changes were applied.',
-                           'proposals': proposals, 'model': request.model,
-                           'cost': getattr(active_provider, 'cost', 0.06), 'audit': audit},
+                           'proposals': proposals, 'model': route.model,
+                           'cost': getattr(active_provider, 'cost', request.max_cost), 'audit': audit,
+                           'routing': {'source': route.source, 'confidence': route.confidence,
+                                       'model': route.model}},
                 'trace': [*state['trace'], state['specialist'] + '_agent']}
 
     def review(state: AgentState) -> AgentState:
@@ -337,6 +366,6 @@ async def run_agent(request: AgentRequest, provider: LLMProvider | None = None) 
         graph.add_edge(specialist + '_agent', 'confirmation_boundary')
     graph.add_edge('confirmation_boundary', END)
     # Bound the complete turn so Worker waitUntil can finish or persist a retry.
-    async with asyncio.timeout(22):
+    async with asyncio.timeout(55):
         result = await graph.compile().ainvoke({})
     return result['answer']
