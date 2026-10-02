@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 440" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Source of truth for the native mascot. tools/gen_cat_kt.py turns each <g id> into NekoArt.kt layers. Paths only. -->
+  <g id="shadow"><path d="M70 410 a130 14 0 1 0 260 0 a130 14 0 1 0 -260 0z" fill="#F4A3A6" stroke="none"/></g>
+
+  <g id="ears">
+    <path d="M116 168 Q108 104 138 72 Q150 62 162 72 L206 116 Z" fill="#FFFFFF" stroke="#2B2B33" stroke-width="6"/>
+    <path d="M134 112 Q138 92 150 84 L182 116 Z" fill="#F4807F" stroke="none"/>
+    <path d="M284 168 Q292 104 262 72 Q250 62 238 72 L194 116 Z" fill="#FFFFFF" stroke="#2B2B33" stroke-width="6"/>
+    <path d="M266 112 Q262 92 250 84 L218 116 Z" fill="#F4807F" stroke="none"/>
+  </g>
+
+  <g id="body">
+    <path d="M152 290 C120 310 98 350 100 385 C100 399 112 405 125 405 L275 405 C288 405 300 399 300 385 C302 350 280 310 248 290 Z" fill="#FFFFFF" stroke="#2B2B33" stroke-width="6"/>
+    <path d="M96 372 a28 32 0 1 0 56 0 a28 32 0 1 0 -56 0z" fill="#FFFFFF" stroke="#2B2B33" stroke-width="6"/>
+    <path d="M101 366 a15 20 0 1 0 30 0 a15 20 0 1 0 -30 0z" fill="#2B2B33" stroke="none"/>
+    <path d="M100 389 a12 11 0 1 0 24 0 a12 11 0 1 0 -24 0z" fill="#F6A93B" stroke="none"/>
+    <path d="M248 372 a28 32 0 1 0 56 0 a28 32 0 1 0 -56 0z" fill="#FFFFFF" stroke="#2B2B33" stroke-width="6"/>
+    <path d="M269 366 a15 20 0 1 0 30 0 a15 20 0 1 0 -30 0z" fill="#2B2B33" stroke="none"/>
+    <path d="M276 389 a12 11 0 1 0 24 0 a12 11 0 1 0 -24 0z" fill="#F6A93B" stroke="none"/>
+    <path d="M116 399 a34 17 0 1 0 68 0 a34 17 0 1 0 -68 0z" fill="#FFFFFF" stroke="#2B2B33" stroke-width="6"/>
+    <path d="M144 394 v11 M156 394 v11" stroke="#2B2B33" stroke-width="4"/>
+    <path d="M216 399 a34 17 0 1 0 68 0 a34 17 0 1 0 -68 0z" fill="#FFFFFF" stroke="#2B2B33" stroke-width="6"/>
+    <path d="M244 394 v11 M256 394 v11" stroke="#2B2B33" stroke-width="4"/>
+  </g>
+
+  <g id="bib">
+    <path d="M146 304 Q200 338 254 304 Q250 354 200 388 Q150 354 146 304Z" fill="#6DD07A" stroke="#2B2B33" stroke-width="5"/>
+    <path d="M168 326 a10 10 0 0 1 20 0 M188 326 a10 10 0 0 1 20 0 M208 326 a10 10 0 0 1 20 0 M178 340 a10 10 0 0 1 20 0 M198 340 a10 10 0 0 1 20 0 M188 354 a10 10 0 0 1 20 0" stroke="#C4F5BF" stroke-width="3"/>
+  </g>
+
+  <g id="collar">
+    <path d="M152 286 Q200 314 248 286 L254 304 Q200 336 146 304 Z" fill="#E5484D" stroke="#2B2B33" stroke-width="5"/>
+    <path d="M158 297 Q200 322 242 297" stroke="#F58C8F" stroke-width="3"/>
+  </g>
+  <g id="bell">
+    <path d="M181 330 a19 19 0 1 0 38 0 a19 19 0 1 0 -38 0z" fill="#FFC93C" stroke="#2B2B33" stroke-width="5"/>
+    <path d="M183 335 H217" stroke="#2B2B33" stroke-width="4"/>
+    <path d="M196.5 345 a3.5 3.5 0 1 0 7 0 a3.5 3.5 0 1 0 -7 0z" fill="#2B2B33" stroke="none"/>
+    <path d="M190 322 Q194 316 199 316" stroke="#FFF2B0" stroke-width="4"/>
+  </g>
+
+  <g id="coin">
+    <path d="M176 386 a30 40 0 1 0 60 0 a30 40 0 1 0 -60 0z" fill="#FFC93C" stroke="#2B2B33" stroke-width="6"/>
+    <path d="M185 386 a21 30 0 1 0 42 0 a21 30 0 1 0 -42 0z" stroke="#E39A1B" stroke-width="3"/>
+    <path d="M192 368 H220 M192 378 H220 M194 368 H205 Q218 368 218 379 Q218 390 205 390 H196 L216 410" stroke="#2B2B33" stroke-width="5"/>
+  </g>
+  <g id="arm_left">
+    <path d="M150 326 C132 342 134 368 156 386" stroke="#2B2B33" stroke-width="42"/>
+    <path d="M150 326 C132 342 134 368 156 386" stroke="#FFFFFF" stroke-width="30"/>
+    <path d="M146 392 a17 14 0 1 0 34 0 a17 14 0 1 0 -34 0z" fill="#FFFFFF" stroke="#2B2B33" stroke-width="5"/>
+    <path d="M158 386 v8 M168 386 v8" stroke="#2B2B33" stroke-width="3.5"/>
+  </g>
+
+  <g id="head">
+    <path d="M98 212 C96 150 135 110 200 110 C265 110 304 150 302 212 C300 266 258 292 200 292 C142 292 100 266 98 212 Z" fill="#FFFFFF" stroke="#2B2B33" stroke-width="6"/>
+    <path d="M168 114 Q200 104 234 114 Q224 142 200 140 Q176 140 168 114Z" fill="#2B2B33" stroke="none"/>
+    <path d="M214 108 Q240 112 250 126 Q238 148 214 143 Q224 126 214 108Z" fill="#F6A93B" stroke="none"/>
+    <path d="M164 152 L166 170 M178 148 L179 166 M236 152 L234 170 M222 148 L221 166" stroke="#F6B93B" stroke-width="5"/>
+    <path d="M106 238 a26 18 0 1 0 52 0 a26 18 0 1 0 -52 0z" fill="#F4707B" stroke="none"/>
+    <path d="M242 238 a26 18 0 1 0 52 0 a26 18 0 1 0 -52 0z" fill="#F4707B" stroke="none"/>
+    <path d="M104 232 L138 237 M104 245 L138 244 M110 257 L138 251 M296 232 L262 237 M296 245 L262 244 M290 257 L262 251" stroke="#2B2B33" stroke-width="3"/>
+    <path d="M191 221 Q200 214 209 221 Q205 230 200 231 Q195 230 191 221Z" fill="#2B2B33" stroke="none"/>
+  </g>
+
+  <g id="eyes_happy">
+    <path d="M148 206 Q166 182 186 206 M214 206 Q234 182 252 206" stroke="#2B2B33" stroke-width="7"/>
+    <path d="M148 206 L140 201 M252 206 L260 201" stroke="#2B2B33" stroke-width="4"/>
+  </g>
+  <g id="eyes_open">
+    <path d="M154 198 a13 15 0 1 0 26 0 a13 15 0 1 0 -26 0z M220 198 a13 15 0 1 0 26 0 a13 15 0 1 0 -26 0z" fill="#2B2B33" stroke="none"/>
+    <path d="M168 191 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0z M234 191 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0z" fill="#FFFFFF" stroke="none"/>
+  </g>
+  <g id="mouth_closed">
+    <path d="M180 237 Q190 251 200 237 Q210 251 220 237" stroke="#2B2B33" stroke-width="5"/>
+  </g>
+  <g id="mouth_open">
+    <path d="M182 237 Q200 273 218 237 Q200 244 182 237Z" fill="#7C2D3B" stroke="#2B2B33" stroke-width="4"/>
+    <path d="M192 255 Q200 266 208 255 Q200 249 192 255Z" fill="#F58C93" stroke="none"/>
+  </g>
+
+  <g id="paw_wave">
+    <path d="M270 338 C312 332 324 286 318 238" stroke="#2B2B33" stroke-width="42"/>
+    <path d="M270 338 C312 332 324 286 318 238" stroke="#FFFFFF" stroke-width="30"/>
+    <path d="M288 212 a28 25 0 1 0 56 0 a28 25 0 1 0 -56 0z" fill="#FFFFFF" stroke="#2B2B33" stroke-width="6"/>
+    <path d="M308 196 v12 M322 194 v12" stroke="#2B2B33" stroke-width="4"/>
+  </g>
+</svg>

@@ -76,7 +76,12 @@ SPECIALISTS = {
                 ('summarize', 'explain_transaction')),
     'followup': ('Carry out the authorized scheduled check. Give one useful follow-up and respect reminder preferences.',
                  ('summarize', 'get_budget_status', 'explain_transaction')),
-    'chat': ('Answer the personal finance question; ask for clarification when the task needs it.',
+    'chat': ('Answer the personal finance question; ask for clarification when the task needs it. '
+             'When the user wants to set or review a monthly budget, run a short interview: ask ONE question per reply '
+             '(total budget for this month, monthly income, fixed bills such as rent, then limits for food, groceries, '
+             'transport, shopping, bills, health and entertainment), acknowledge each answer in one friendly sentence, '
+             'and at the end summarize the plan in rupees and say it can be saved in Insights. '
+             'If no budgets are set, gently ask what this month\'s budget is. Keep every reply under 60 words.',
              ('summarize', 'get_budget_status', 'explain_transaction')),
 }
 

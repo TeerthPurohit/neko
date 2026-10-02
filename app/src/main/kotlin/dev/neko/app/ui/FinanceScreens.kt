@@ -57,42 +57,29 @@ import java.util.Locale
             IconButton(onSettings,modifier=Modifier.size(NekoTokens.Touch)) { Icon(Icons.Outlined.Tune,"Settings") }
         }
 
-        Box(Modifier.fillMaxWidth().height(218.dp),contentAlignment=Alignment.Center) {
-            Box(
-                Modifier.fillMaxSize(0.92f).graphicsLayer { alpha=0.90f }
-                    .background(Brush.radialGradient(listOf(halo,halo.copy(alpha=0.07f),Color.Transparent)),CircleShape),
-            )
-            NekoMascot3D(
-                modifier=Modifier.fillMaxWidth().height(224.dp),
-                speaking=waiting||state.busy,
-                reducedMotion=state.reducedMotion||state.paused,
-            )
-        }
-
         LazyColumn(
             modifier=Modifier.weight(1f).fillMaxWidth(),
             contentPadding=PaddingValues(start=NekoTokens.Page,end=NekoTokens.Page,top=4.dp,bottom=12.dp),
             verticalArrangement=Arrangement.spacedBy(12.dp),
         ) {
-            if(state.chat.isEmpty()) {
-                item {
-                    Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                        Text("YOUR MONEY, IN GOOD COMPANY",style=MaterialTheme.typography.labelSmall,color=accent)
-                        Text(
-                            if(state.userName.equals("You",true))"Hi, I'm Neko. What would you like to figure out?"
-                            else "Hi ${state.userName}. What would you like to figure out?",
-                            style=MaterialTheme.typography.headlineSmall,
-                        )
-                        Text(
-                            when {
-                                !state.aiEnabled->"Your ledger stays on this phone. Connect your OpenRouter key in Settings to chat about spending, budgets, and transactions."
-                                state.transactions.isEmpty()->"I'll keep an eye out for bank notices. Ask me about money whenever you like."
-                                else->"I can help you understand a purchase, check a budget, or review something that needs context."
-                            },
-                            style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+            item {
+                val reply=state.chat.lastOrNull { it.first=="assistant" }?.second
+                val thinking=waiting||state.busy
+                val line=when {
+                    thinking->"Hmm, let me think about that..."
+                    !state.aiEnabled->"Hi! Connect me in Settings and I'll watch your money with you."
+                    reply!=null->if(reply.length>260)reply.take(257)+"..." else reply
+                    state.budgets.isEmpty()->"What's your budget for this month? Tell me and I'll keep watch!"
+                    else->"Hi ${if(state.userName.equals("You",true))"there" else state.userName}! Ask me anything about your money."
                 }
+                var talking by remember { mutableStateOf(false) }
+                LaunchedEffect(line) { talking=!thinking;kotlinx.coroutines.delay(line.length*18L+400);talking=false }
+                Column(Modifier.fillMaxWidth(),horizontalAlignment=Alignment.CenterHorizontally) {
+                    ComicBubble(line,Modifier.fillMaxWidth(),tailX=0.56f,animate=!state.reducedMotion&&!state.paused)
+                    NekoCat(Modifier.size(210.dp,230.dp),animate=!state.reducedMotion&&!state.paused,mood=if(thinking)CatMood.THINKING else if(talking)CatMood.TALKING else CatMood.HAPPY)
+                }
+            }
+            if(state.chat.isEmpty()) {
                 if(!smsGranted)item {
                     Surface(
                         onClick=onPermissions,
@@ -112,9 +99,9 @@ import java.util.Locale
                 }
                 if(state.aiEnabled&&!state.paused)item {
                     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        listOf("What should I review?","How are my budgets?","Summarize this month").forEach { example ->
+                        listOf(if(state.budgets.isEmpty())"Set my budget for this month" else "How are my budgets?","What should I review?","Summarize this month").forEach { example ->
                             SuggestionChip(
-                                onClick={onSend(example)},
+                                onClick={onSend(if(example.startsWith("Set my budget"))"Help me set my budget for this month. Ask me one question at a time: first my total monthly budget, then my income, fixed bills and category limits." else example)},
                                 label={Text(example)},
                                 enabled=!state.busy,
                                 shape=NekoTokens.ControlShape,
