@@ -110,6 +110,9 @@ export async function chat(env: Env,user: User,question: string,taskId='manual',
   const budgets=(await env.DB.prepare('SELECT category,amount_paise FROM budgets WHERE user_id=?').bind(user.id).all()).results;
   const history=(await env.DB.prepare('SELECT role,content FROM chat WHERE user_id=? ORDER BY created_at DESC LIMIT 8').bind(user.id).all()).results.reverse();
   const learned=await corrections(env,user.id);
+  // The month's budget lets the agent pace spending. Absent before migration 004 or before the user sets one.
+  let monthPlan:Record<string,unknown>|null=null;
+  try { monthPlan=await env.DB.prepare('SELECT month,budget_paise,income_paise FROM budget_plans WHERE user_id=?').bind(user.id).first<Record<string,unknown>>(); } catch { monthPlan=null; }
   const turnBudget=Number(env.AI_TURN_BUDGET_USD??'0.06');
   if(!Number.isFinite(turnBudget)||turnBudget<0.005||turnBudget>1)throw new ApiError(503,'Configure a per-turn AI budget between $0.005 and $1');
   const reservation=await reserve(env,user,turnBudget);
@@ -117,7 +120,7 @@ export async function chat(env: Env,user: User,question: string,taskId='manual',
   try {
     const response=await fetch(env.AGENT_SERVICE_URL.replace(/\/$/,'')+'/internal/run',{
       method:'POST',headers:{Authorization:'Bearer '+env.AGENT_SERVICE_TOKEN,'Content-Type':'application/json'},
-      body:JSON.stringify({user_id:user.id,task_id:taskId,task_kind:taskKind,corrections:learned,api_key:key,model:user.model,allowed_models:user.model==='auto'?[]:[user.model],max_cost:turnBudget,question,consent:true,last_sync:user.last_sync,transactions:rows,budgets,history}),signal:AbortSignal.timeout(60_000),
+      body:JSON.stringify({user_id:user.id,task_id:taskId,task_kind:taskKind,corrections:learned,plan:monthPlan,api_key:key,model:user.model,allowed_models:user.model==='auto'?[]:[user.model],max_cost:turnBudget,question,consent:true,last_sync:user.last_sync,transactions:rows,budgets,history}),signal:AbortSignal.timeout(60_000),
     });
     if (!response.ok) throw new ApiError(response.status===429?429:502,'Agent service is unavailable; this task will retry');
     const result=object(await response.json());

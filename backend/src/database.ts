@@ -2,7 +2,7 @@ import pg from 'pg';
 
 // Neko stores paise and timestamps below JS's exact-integer boundary.
 pg.types.setTypeParser(20, Number);
-const tables='users|sessions|transactions|budgets|goals|tasks|activity|chat|usage|groups|members|expenses|shares|auth_attempts|agent_corrections';
+const tables='users|sessions|transactions|budgets|goals|tasks|activity|chat|usage|groups|members|expenses|shares|auth_attempts|agent_corrections|budget_plans';
 export function postgresSql(sql:string):string {
   let index=0,quoted=false,out='';
   for(let i=0;i<sql.length;i++){

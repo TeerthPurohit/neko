@@ -41,7 +41,11 @@ class AgentRepository(private val ledger: LedgerRepository, private val network:
             .put("transfer_id",t.transferId).put("updated_at",t.updatedAt)
             .put("spending_treatment",t.spendingTreatment.name).put("related_transaction_id",t.relatedTransactionId).put("principal_paise",t.principalPaise) })
         val budgets=JSONArray(ledger.db.budgets().map { JSONObject().put("category",it.category.name).put("amount_paise",it.amountPaise) })
-        val result=api("sync","POST",JSONObject().put("transactions",txs).put("budgets",budgets))
+        val body=JSONObject().put("transactions",txs).put("budgets",budgets)
+        // The month's total budget and income (from the budget interview) let the agent pace spending; amounts only, no merchants or messages.
+        val month=settings.get("month_budget_month");val total=settings.get("month_budget_paise","0").toLongOrNull()?:0
+        if(month.isNotBlank()&&total>0)body.put("plan",JSONObject().put("month",month).put("budget_paise",total).put("income_paise",settings.get("month_income_paise","0").toLongOrNull()?:0))
+        val result=api("sync","POST",body)
         settings.put("last_sync",result.getLong("last_sync").toString())
         val activity=api("activity")
         settings.put("agent_state",activity.toString())

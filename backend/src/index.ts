@@ -1,6 +1,6 @@
 import { ApiError, categories, models, type Env, type User, type BackgroundContext } from './types';
 import { authenticate, hash, json, membership, token, passwordHash, encryptModelKey } from './security';
-import { choice, equalShares, integer, object, text, transaction } from './validation';
+import { choice, equalShares, integer, object, plan, text, transaction } from './validation';
 import { enqueue, nextDailyRun, processTask, scheduled } from './tasks';
 import { corrections, saveCorrection } from './learning';
 
@@ -83,6 +83,11 @@ async function route(req:Request,env:Env,ctx:BackgroundContext):Promise<Response
     stmts.push(env.DB.prepare('DELETE FROM budgets WHERE user_id=?').bind(user.id));
     for(const b of budgets)stmts.push(env.DB.prepare('INSERT INTO budgets(user_id,category,amount_paise) VALUES(?,?,?)').bind(user.id,b.category,b.amount));
     await env.DB.batch(stmts);
+    // The monthly plan is stored apart from the batch above: an invalid plan or a database without migration 004 must never stop transactions from syncing.
+    try {
+      const monthPlan=data.plan==null?null:plan(data.plan);
+      if(monthPlan)await env.DB.prepare('INSERT INTO budget_plans(user_id,month,budget_paise,income_paise,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET month=excluded.month,budget_paise=excluded.budget_paise,income_paise=excluded.income_paise,updated_at=excluded.updated_at').bind(user.id,monthPlan.month,monthPlan.budget_paise,monthPlan.income_paise,Date.now()).run();
+    } catch { /* Plan is optional context for the agent. */ }
     const jobIds:string[]=[];
     if(env.ALLOW_PAID_AI==='true')for(const t of txs.filter(t=>t.review==='DRAFT').slice(0,10))jobIds.push(await enqueue(env,user.id,'classify',{transaction_id:t.id,expected_updated_at:t.updated_at},`classify:${user.id}:${t.id}:${t.updated_at}`));
     if(jobIds.length)ctx.waitUntil(processTask(env,jobIds[0]));
@@ -139,6 +144,7 @@ async function route(req:Request,env:Env,ctx:BackgroundContext):Promise<Response
   }
   if(path==='/v1/cloud-context'&&req.method==='DELETE') {
     await env.DB.batch(['transactions','budgets','tasks','activity','chat','goals','agent_corrections'].map(table=>env.DB.prepare(`DELETE FROM ${table} WHERE user_id=?`).bind(user.id)));
+    try { await env.DB.prepare('DELETE FROM budget_plans WHERE user_id=?').bind(user.id).run(); } catch { /* Table exists only after migration 004. */ }
     await env.DB.prepare('UPDATE users SET ai_enabled=0,last_sync=0 WHERE id=?').bind(user.id).run();return json({ok:true});
   }
   if(path==='/v1/groups'&&req.method==='GET') {

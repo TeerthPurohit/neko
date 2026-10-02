@@ -15,6 +15,13 @@ export function choice(input: unknown, choices: readonly string[]): string {
   if (typeof input !== 'string' || !choices.includes(input)) throw new ApiError(400,'Invalid choice');
   return input;
 }
+/** The month's total budget and income (paise) the user set in the app's budget interview. */
+export interface Plan { month: string; budget_paise: number; income_paise: number }
+export function plan(input: unknown): Plan {
+  const p = object(input), month = text(p.month, 7);
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new ApiError(400,'Invalid plan month');
+  return { month, budget_paise: integer(p.budget_paise,1,1_000_000_000), income_paise: p.income_paise === undefined ? 0 : integer(p.income_paise,0,1_000_000_000) };
+}
 export function redact(input: string): string {
   return input.replace(/[\w.+-]+@[\w.-]+/g,'[private counterparty]').replace(/\b\d{4,}\b/g,'[private number]').slice(0,100);
 }
