@@ -13,6 +13,10 @@ class BudgetingTest {
     @Test fun `rupee input rejects junk zero negative and oversized values`() {
         listOf("", "abc", "0", "-5", "12.345", "1e5", "10000000.01", "25000 rupees").forEach { assertNull(Budgeting.parseRupees(it), "'$it' must be rejected") }
     }
+    @Test fun `rupee input rejects malformed comma grouping`() {
+        assertNull(Budgeting.parseRupees("1,2,3"))
+        assertNull(Budgeting.parseRupees("1,,234.56"))
+    }
     @Test fun `safe to spend is what remains spread over the days left and never negative`() {
         assertEquals(50_000L, Budgeting.safeToSpendPerDay(3_000_000, 1_500_000, 30))
         assertEquals(0L, Budgeting.safeToSpendPerDay(1_000_000, 1_200_000, 10))

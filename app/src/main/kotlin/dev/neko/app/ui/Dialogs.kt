@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -21,14 +22,14 @@ import java.time.LocalDate
     Box{OutlinedButton({open=true},Modifier.fillMaxWidth()){Text(category.label)};DropdownMenu(open,{open=false}){Category.entries.forEach{item->DropdownMenuItem(text={Text(item.label)},onClick={onChange(item);open=false})}}}
 }
 @Composable fun TransactionDialog(tx:Transaction?,state:NekoState,onDismiss:()->Unit,onSave:(Transaction,Category,String,String,Long,Long,PaymentStatus,SpendingTreatment,String?,Long?)->Unit,onMatch:((Transaction)->Unit)?=null,onUnmatch:(()->Unit)?=null,onOwnTransfer:(()->Unit)?=null){
-    var amount by remember(tx?.id){mutableStateOf(tx?.let{Money.decimal(it.amountPaise)}?:"")}
-    var merchant by remember(tx?.id){mutableStateOf(tx?.merchant?:"")};var notes by remember(tx?.id){mutableStateOf(tx?.notes?:"")}
-    var category by remember(tx?.id){mutableStateOf(tx?.category?:Category.OTHER)};var account by remember(tx?.id){mutableStateOf(tx?.account?:"Cash")}
-    var direction by remember(tx?.id){mutableStateOf(tx?.direction?:Direction.DEBIT)};var date by remember(tx?.id){mutableLongStateOf(tx?.occurredAt?:System.currentTimeMillis())}
-    var status by remember(tx?.id){mutableStateOf(tx?.status?:PaymentStatus.POSTED)};var error by remember{mutableStateOf<String?>(null)};var matching by remember{mutableStateOf(false)}
-    var treatment by remember(tx?.id){mutableStateOf(tx?.spendingTreatment?:SpendingTreatment.AUTO)}
-    var relatedId by remember(tx?.id){mutableStateOf(tx?.relatedTransactionId)}
-    var principal by remember(tx?.id){mutableStateOf(tx?.principalPaise?.let(Money::decimal).orEmpty())}
+    var amount by rememberSaveable(tx?.id){mutableStateOf(tx?.let{Money.decimal(it.amountPaise)}?:"")}
+    var merchant by rememberSaveable(tx?.id){mutableStateOf(tx?.merchant?:"")};var notes by rememberSaveable(tx?.id){mutableStateOf(tx?.notes?:"")}
+    var category by rememberSaveable(tx?.id){mutableStateOf(tx?.category?:Category.OTHER)};var account by rememberSaveable(tx?.id){mutableStateOf(tx?.account?:"Cash")}
+    var direction by rememberSaveable(tx?.id){mutableStateOf(tx?.direction?:Direction.DEBIT)};var date by rememberSaveable(tx?.id){mutableLongStateOf(tx?.occurredAt?:System.currentTimeMillis())}
+    var status by rememberSaveable(tx?.id){mutableStateOf(tx?.status?:PaymentStatus.POSTED)};var error by remember{mutableStateOf<String?>(null)};var matching by remember{mutableStateOf(false)}
+    var treatment by rememberSaveable(tx?.id){mutableStateOf(tx?.spendingTreatment?:SpendingTreatment.AUTO)}
+    var relatedId by rememberSaveable(tx?.id){mutableStateOf(tx?.relatedTransactionId)}
+    var principal by rememberSaveable(tx?.id){mutableStateOf(tx?.principalPaise?.let(Money::decimal).orEmpty())}
     var treatmentMenu by remember{mutableStateOf(false)};var relatedMenu by remember{mutableStateOf(false)}
     val context=LocalContext.current
     // Any matching entry in another account is offered; accounts do not have to be marked as the user's own first.

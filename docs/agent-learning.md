@@ -48,8 +48,23 @@ to follow-up; chat routing uses task keywords and can be refined later. Broad
 requests currently use one specialist rather than running several model loops.
 All specialists share the user's explicit global corrections and receive their
 own scoped corrections. Tool registries, requests, and proposals are isolated per
-run. Learned preferences cannot grant new tool permissions. Ledger changes remain
-reviewable drafts; shared expense writes still require confirmation.
+run. Learned preferences cannot grant new tool permissions. Ledger changes the
+agent proposes in chat remain reviewable drafts; shared expense writes still
+require confirmation.
+
+## Learning from how you file things (on the phone)
+
+Every confirmed transaction also teaches Neko. When a bank notice arrives,
+`Autopilot` (core) looks at your confirmed entries for the same merchant. If your
+most recent five entries all share one category, Neko applies that category. It
+also confirms the transaction when the evidence is clear: the payment is posted,
+the account is identified, there is no possible duplicate, it is not a transfer
+or card bill, the amount is not unusual, and, for money received, you have filed
+that payer as income before. A known merchant type (Swiggy, Uber, ...) counts the
+same way. Cloud classifications are applied on their own at 85% confidence or
+higher. Each action is logged in Activity with **Undo**. Correcting the category
+of a transaction changes what Neko learns next time. Turn this off with
+**Settings → Let Neko act on its own**.
 
 Apply `003_agent_learning.sql` with the existing migration runner before running
 the updated backend. These changes are local until migrated and deployed.

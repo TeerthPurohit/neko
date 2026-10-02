@@ -10,10 +10,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 
-@Composable fun AgentScreen(state:NekoState,model:NekoViewModel,onSettings:()->Unit)=AgentContent(state,model::send,model::goal,model::goalEnabled,model::applyProposal,{model.pause(!state.paused)},model::refresh,onSettings)
-@Composable fun AgentContent(state:NekoState,onSend:(String)->Unit,onGoal:(String,Int)->Unit,onGoalEnabled:(String,Boolean)->Unit,onApprove:(Proposal)->Unit,onPause:()->Unit,onRefresh:()->Unit,onSettings:()->Unit){
+@Composable fun AgentScreen(state:NekoState,model:NekoViewModel,onSettings:()->Unit)=AgentContent(state,model::send,model::goal,model::goalEnabled,model::applyProposal,{model.pause(!state.paused)},model::refresh,onSettings,model::undoAuto)
+@Composable fun AgentContent(state:NekoState,onSend:(String)->Unit,onGoal:(String,Int)->Unit,onGoalEnabled:(String,Boolean)->Unit,onApprove:(Proposal)->Unit,onPause:()->Unit,onRefresh:()->Unit,onSettings:()->Unit,onUndo:(String)->Unit={}){
     var tab by rememberSaveable{mutableStateOf("Activity")};var text by rememberSaveable{mutableStateOf("")};var goalDialog by remember{mutableStateOf(false)};var proposal by remember{mutableStateOf<Proposal?>(null)}
     Column(Modifier.fillMaxSize()){
         Row(Modifier.padding(horizontal=NekoTokens.Page,vertical=16.dp),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("Neko",style=MaterialTheme.typography.headlineLarge);Text(if(state.paused)"Taking a pause"else"Here to help you follow through",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};IconButton(onRefresh,enabled=!state.busy){Icon(Icons.Outlined.Refresh,"Refresh agent")};IconButton(onPause,enabled=state.paired){Icon(if(state.paused)Icons.Outlined.PlayArrow else Icons.Outlined.Pause,if(state.paused)"Resume scheduled checks"else"Pause scheduled checks")}}
@@ -28,14 +29,15 @@ import androidx.compose.ui.unit.dp
                         Text("Ask about spending, review an entry, or give me a responsibility.",color=MaterialTheme.colorScheme.onSurfaceVariant)
                     }}
                     if(state.aiEnabled&&state.chat.isEmpty())item{Column(verticalArrangement=Arrangement.spacedBy(8.dp)){listOf("Help me review uncategorized transactions","How am I doing against my budgets?","Summarize my recent spending").forEach{question->OutlinedButton({onSend(question)},Modifier.fillMaxWidth(),enabled=!state.busy){Text(question)}}}}
-                    itemsIndexed(state.chat){_,message->Row(Modifier.fillMaxWidth(),horizontalArrangement=if(message.first=="user")Arrangement.End else Arrangement.Start){Panel(Modifier.widthIn(max=330.dp),if(message.first=="user")MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface){Text(if(message.first=="user")"YOU"else"NEKO",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary);Text(message.second)}}}
+                    itemsIndexed(state.chat){_,message->Row(Modifier.fillMaxWidth(),horizontalArrangement=if(message.first=="user")Arrangement.End else Arrangement.Start){Panel(Modifier.widthIn(max=330.dp),if(message.first=="user")MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface){Text(if(message.first=="user")"YOU"else"NEKO",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary);Text(if(message.first=="user")AnnotatedString(message.second) else markdown(message.second))}}}
                     if(state.pendingTasks>0)item{StatusPill("${state.pendingTasks} tasks in progress")}
                 }
                 "Activity"->{
-                    if(state.activity.isEmpty())item{EmptyState("A quiet start","Neko's check-ins, category suggestions, and task outcomes will appear here. Every proposed ledger change needs your approval.")}
+                    if(state.activity.isEmpty())item{EmptyState("A quiet start","What Neko files on its own, its check-ins, and its suggestions appear here. Anything it did itself can be undone.")}
                     items(state.activity,key={it.id}){item->Panel(Modifier.fillMaxWidth()){
-                        Text(dateText(item.createdAt),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(item.title,style=MaterialTheme.typography.titleLarge);Text(item.body)
+                        Text(dateText(item.createdAt),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(item.title,style=MaterialTheme.typography.titleLarge);Text(markdown(item.body))
                         item.proposals.forEach{p->OutlinedButton({proposal=p},enabled=!state.busy){Text("Review ${p.category.label} suggestion")}}
+                        if(item.undoable)OutlinedButton({onUndo(item.id)},enabled=!state.busy){Text("Undo")}
                     }}
                 }
                 else->{

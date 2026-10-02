@@ -16,6 +16,7 @@ class NekoApplication: Application() {
         dev.neko.app.agent.Notifications.createChannels(this)
         dev.neko.app.agent.AgentWork.cancelPeriodic(this)
         dev.neko.app.capture.SmsCatchUpWorker.schedule(this)
+        dev.neko.app.agent.Watch.scheduleDigest(this)
         configureFirebase()
     }
     fun configureFirebase() {

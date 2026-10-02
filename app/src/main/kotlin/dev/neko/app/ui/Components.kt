@@ -19,7 +19,7 @@ import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-fun rupees(paise:Long):String=NumberFormat.getCurrencyInstance(Locale.forLanguageTag("en-IN")).apply{maximumFractionDigits=if(paise%100==0L)0 else 2}.format(paise/100.0)
+fun rupees(paise:Long):String=Money.rupees(paise)
 fun dateText(time:Long):String=DateTimeFormatter.ofPattern("d MMM · h:mm a",Locale.ENGLISH).format(Instant.ofEpochMilli(time).atZone(Ledger.india))
 @Composable fun ScreenTitle(title:String,subtitle:String?=null,action:(@Composable ()->Unit)?=null){
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text(title,style=MaterialTheme.typography.headlineLarge);if(subtitle!=null)Text(subtitle,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)};action?.invoke()}

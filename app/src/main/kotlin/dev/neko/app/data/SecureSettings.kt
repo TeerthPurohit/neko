@@ -35,5 +35,7 @@ class SecureSettings(context: Context) {
     var splitwiseKey: String get() = get("splitwise_key"); set(value) = put("splitwise_key", value)
     var theme: String get() = get("theme", "system"); set(value) = put("theme", value)
     var reducedMotion: Boolean get() = get("reduced_motion", "false").toBoolean(); set(value) = put("reduced_motion", value.toString())
+    /** Whether Neko files and confirms transactions on its own when it is sure. */
+    var autopilot: Boolean get() = get("autopilot", "true").toBoolean(); set(value) = put("autopilot", value.toString())
     var paused: Boolean get() = get("paused", "false").toBoolean(); set(value) = put("paused", value.toString())
 }

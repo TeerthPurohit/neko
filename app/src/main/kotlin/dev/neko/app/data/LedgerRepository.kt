@@ -10,6 +10,8 @@ import org.json.JSONObject
 const val UPI_APP_ACCOUNT = "UPI app"
 /** Imported statement rows start with this fingerprint prefix until a bank SMS for the same payment claims them. */
 const val STATEMENT_PREFIX = "stmt:"
+/** Marks a note naming a possible duplicate; such entries are never confirmed automatically. */
+const val POSSIBLE_DUPLICATE = "same amount, no shared bank reference"
 
 /** What an import did: rows added, rows that matched something already held, the new spending ready to confirm, and new debits that look like transfers or card bills ([needsReview]). */
 data class ImportResult(val imported: Int, val alreadyRecorded: Int, val alreadyImported: Int, val newDebitIds: List<String>, val skipped: Int = 0, val needsReview: Int = 0, val transfersLinked: Int = 0)
@@ -21,19 +23,69 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
     private fun storeRaw(database: android.database.sqlite.SQLiteDatabase, fingerprint: String, sms: BankSms) {
         database.insertWithOnConflict("raw_sms",null,android.content.ContentValues().apply { put("fingerprint",fingerprint);put("ciphertext",settings.encrypt(JSONObject().put("sender",sms.sender).put("body",sms.body).toString(),"sms:"+fingerprint)) },android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE)
     }
+    private fun possibleDuplicateNote(prefix: String, other: Transaction): String =
+        "$prefix It may be the same payment as ${other.merchant} on ${java.time.Instant.ofEpochMilli(other.occurredAt).atZone(Ledger.india).toLocalDate()} ($POSSIBLE_DUPLICATE). If so, delete one of them."
+    /** Records what Neko did on its own in Activity, with what is needed to undo it. */
+    private fun logAuto(before: Transaction, after: Transaction, reason: String) {
+        val confirmed=after.review==ReviewStatus.CONFIRMED&&before.review!=ReviewStatus.CONFIRMED
+        db.saveActivity(JSONObject().put("id","auto:${after.id}").put("kind","auto").put("created_at",System.currentTimeMillis())
+            .put("title",if(confirmed)"Neko filed a payment" else "Neko set a category")
+            .put("body","${Money.rupees(after.amountPaise)} ${if(after.direction==Direction.DEBIT)"to" else "from"} ${after.merchant}: ${after.category.label}${if(confirmed)", confirmed" else ""}, because $reason.")
+            .put("undo",JSONObject().put("transaction_id",after.id).put("revision",after.revision).put("category",before.category.name).put("review",before.review.name)))
+    }
+    /** Lets Neko file [tx] on its own when it is sure; returns the transaction to save. */
+    private fun autopilot(tx: Transaction, possibleDuplicate: Boolean): Transaction {
+        if(!settings.autopilot||settings.paused)return tx
+        val decision=Autopilot.decide(tx,db.transactions(),possibleDuplicate)?:return tx
+        val filed=tx.copy(category=decision.category,review=if(decision.confirm)ReviewStatus.CONFIRMED else tx.review)
+        if(filed!=tx)logAuto(tx,filed,decision.reason)
+        return filed
+    }
+    /** Undoes something Neko did on its own (an Activity entry with "undo"), unless the transaction has changed since. */
+    suspend fun undoAuto(activityId: String) = withContext(Dispatchers.IO) {
+        val database=db.writableDatabase;database.beginTransaction()
+        try {
+            val entry=db.activity().firstOrNull { it.getString("id")==activityId }?:error("This entry is no longer available")
+            val undo=entry.optJSONObject("undo")?:error("This was already undone")
+            val tx=db.get(undo.getString("transaction_id"))?:error("This transaction no longer exists")
+            require(tx.revision==undo.getInt("revision")){"This transaction has changed since, so open it and edit it instead."}
+            db.save(tx.copy(category=Category.valueOf(undo.getString("category")),review=ReviewStatus.valueOf(undo.getString("review")),updatedAt=System.currentTimeMillis(),revision=tx.revision+1))
+            entry.remove("undo");entry.put("body",entry.getString("body")+" Undone: it is back in your review list.")
+            db.saveActivity(entry)
+            database.setTransactionSuccessful();changed()
+        } finally { database.endTransaction() }
+    }
+    /** Applies a cloud category suggestion Neko is confident about to a draft that has not changed since it was suggested. */
+    fun applyCloudCategory(id: String, expectedUpdatedAt: Long, category: Category, confidence: Double): Boolean {
+        if(!settings.autopilot||settings.paused||confidence<0.85)return false
+        val database=db.writableDatabase;database.beginTransaction()
+        try {
+            val tx=db.get(id)?:return false
+            if(tx.updatedAt!=expectedUpdatedAt||tx.review!=ReviewStatus.DRAFT||tx.category!=Category.OTHER)return false
+            val history=db.transactions()
+            val confirm=Autopilot.decide(tx.copy(category=category),history,tx.notes.contains(POSSIBLE_DUPLICATE))?.confirm==true
+            val filed=tx.copy(category=category,review=if(confirm)ReviewStatus.CONFIRMED else tx.review,aiSuggestedCategory=category,aiConfidence=confidence,updatedAt=System.currentTimeMillis(),revision=tx.revision+1)
+            db.save(filed);logAuto(tx,filed,"Neko's AI is ${(confidence*100).toInt()}% sure")
+            database.setTransactionSuccessful();changed();return true
+        } finally { database.endTransaction() }
+    }
     suspend fun capture(sms: BankSms): Transaction? = withContext(Dispatchers.IO) {
-        val incoming = SmsParser().parse(sms) ?: return@withContext null
+        var incoming = SmsParser().parse(sms) ?: return@withContext null
         val database=db.writableDatabase;database.beginTransaction()
         try {
             // A payment recorded through Neko's Pay button adopts its bank notice's fingerprint, so every later notice for it (and every replay) finds it here.
             var old=db.get(incoming.id)?:db.getByFingerprint(incoming.fingerprint)
+            var possibleDuplicate=false
             if(old==null) {
                 // Same money as a payment started in Neko: match by UPI reference, or by amount + time + the payee named in the notice.
                 // A statement row not yet claimed by a notice still carries its "stmt:" fingerprint; statements only know the date, so allow 36 hours.
                 val sameMoney=db.transactions().filter { it.direction==incoming.direction&&it.amountPaise==incoming.amountPaise&&it.status!=PaymentStatus.FAILED }
                 val upiRecorded=sameMoney.firstOrNull { it.source==Source.MANUAL&&it.account==UPI_APP_ACCOUNT&&((incoming.reference!=null&&it.reference==incoming.reference)||(kotlin.math.abs(it.occurredAt-incoming.occurredAt)<=1_800_000&&UpiPay.samePayee(it.merchant,it.notes,incoming.merchant))) }
                 // A statement row not yet claimed by a notice still carries its "stmt:" fingerprint. Two different references are two payments.
-                val recorded=upiRecorded?:RecordMatching.best(sameMoney.filter { it.source==Source.STATEMENT&&it.fingerprint.startsWith(STATEMENT_PREFIX) }.map { RecordMatching.Candidate(it,it.reference,it.occurredAt) },incoming.reference,incoming.occurredAt)?.item
+                val statementRows=sameMoney.filter { it.source==Source.STATEMENT&&it.fingerprint.startsWith(STATEMENT_PREFIX) }.map { RecordMatching.Candidate(it,it.reference,it.occurredAt) }
+                val recorded=upiRecorded?:RecordMatching.best(statementRows,incoming.reference,incoming.occurredAt)?.item
+                // Same amount on a nearby day is not proof of the same payment: the notice stays a separate draft that names the possible duplicate.
+                if(recorded==null)RecordMatching.nearby(statementRows,incoming.reference,incoming.occurredAt)?.item?.let { incoming=incoming.copy(notes=possibleDuplicateNote(incoming.notes,it));possibleDuplicate=true }
                 if(recorded!=null) {
                     val merged=recorded.copy(fingerprint=incoming.fingerprint,status=if(SmsLifecycle.advances(recorded.status,incoming.status))incoming.status else recorded.status,account=incoming.account,
                         reference=incoming.reference?:recorded.reference,updatedAt=System.currentTimeMillis(),revision=recorded.revision+1)
@@ -46,7 +98,9 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
             // Replays and out-of-order notices (inbox catch-up re-reads recent messages) never undo or repeat a status change.
             if(old!=null&&!advances&&old.amountPaise==incoming.amountPaise&&old.direction==incoming.direction) { database.setTransactionSuccessful();return@withContext null }
             val conflict=old!=null&&(old.amountPaise!=incoming.amountPaise||old.direction!=incoming.direction)
-            val tx=if(old==null)incoming else old.copy(status=if(advances)incoming.status else old.status,review=if(conflict)ReviewStatus.DRAFT else old.review,notes=if(conflict)"Conflicting bank notice. Check encrypted original notices before confirming." else old.notes,updatedAt=System.currentTimeMillis(),revision=old.revision+1)
+            var tx=if(old==null)incoming else old.copy(status=if(advances)incoming.status else old.status,review=if(conflict)ReviewStatus.DRAFT else old.review,notes=if(conflict)"Conflicting bank notice. Check encrypted original notices before confirming." else old.notes,updatedAt=System.currentTimeMillis(),revision=old.revision+1)
+            // A new notice, or the posted notice completing a pending one, is filed on its own when Neko is sure.
+            if(!conflict&&(old==null||advances))tx=autopilot(tx,possibleDuplicate)
             db.save(tx);storeRaw(database,tx.fingerprint,sms)
             if(incoming.status==PaymentStatus.REVERSED&&incoming.reference!=null) {
                 db.transactions().filter { it.id!=tx.id&&it.account==incoming.account&&it.reference==incoming.reference&&it.amountPaise==incoming.amountPaise&&it.direction!=incoming.direction }.forEach { db.save(it.copy(status=PaymentStatus.REVERSED,updatedAt=System.currentTimeMillis(),revision=it.revision+1)) }
@@ -91,12 +145,16 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
      * Adds statement rows to the ledger as drafts. A row that is the same payment as something already held (same reference, or no conflicting
      * reference and the same or the next day) is matched one-to-one instead of duplicated, and importing the same file again adds nothing.
      */
+    /** "account|yyyy-MM" for every month a statement was imported for, separated by newlines (account names can hold commas). */
+    fun reconciledMonths(): Set<String> = settings.get("statement_months").split('\n').filter { it.isNotBlank() }.toSet()
+    private fun markReconciled(marks: Set<String>) { if (marks.isNotEmpty()) settings.put("statement_months", (reconciledMonths() + marks).joinToString("\n")) }
     suspend fun importStatement(rows: List<StatementRow>, account: String, skipped: Int = 0): ImportResult = withContext(Dispatchers.IO) {
         val database=db.writableDatabase;database.beginTransaction()
         try {
             val existing=db.transactions();val claimed=HashSet<String>();val seen=HashMap<String,Int>()
-            var imported=0;var already=0;var again=0;var review=0;val debits=ArrayList<String>()
+            var imported=0;var already=0;var again=0;var review=0;val debits=ArrayList<String>();val marks=HashSet<String>()
             for(row in rows.sortedBy { it.date }) {
+                val month=java.time.YearMonth.from(row.date);marks+="$account|$month"
                 val at=row.date.atTime(12,0).atZone(Ledger.india).toInstant().toEpochMilli()
                 // Identical rows on one day (two ₹50 teas) stay distinct through their occurrence number. The merchant, not the full narration,
                 // keys rows without a reference so page footers glued onto a narration cannot change a row's identity.
@@ -107,20 +165,21 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
                 val candidates=existing.filter { it.id !in claimed&&it.direction==row.direction&&it.amountPaise==row.amountPaise&&it.status!=PaymentStatus.FAILED }.map { RecordMatching.Candidate(it,it.reference,it.occurredAt) }
                 val match=RecordMatching.best(candidates,row.reference,at)?.item
                 if(match!=null) {
-                    claimed+=match.id;already++
-                    // A pending payment is only settled by proof: a bank notice, or the same UPI reference. A same-amount debit nearby is not proof.
-                    val settles=match.status==PaymentStatus.PENDING&&(match.source==Source.SMS||(match.reference!=null&&match.reference==row.reference))
-                    if(settles||(match.reference==null&&row.reference!=null))
-                        db.save(match.copy(status=if(settles)PaymentStatus.POSTED else match.status,reference=match.reference?:row.reference,updatedAt=System.currentTimeMillis(),revision=match.revision+1))
+                    claimed+=match.id;already++;marks+="${match.account}|$month"
+                    // The same bank reference on the statement is proof that a pending payment went through.
+                    if(match.status==PaymentStatus.PENDING)db.save(match.copy(status=PaymentStatus.POSTED,updatedAt=System.currentTimeMillis(),revision=match.revision+1))
                     continue
                 }
+                // Same amount on a nearby day without a shared reference may be the same payment or a second one: keep the row as a draft to compare.
+                val possible=RecordMatching.nearby(candidates,row.reference,at)?.item
                 db.save(Transaction(id=id,fingerprint=id,occurredAt=at,amountPaise=row.amountPaise,direction=row.direction,account=account,merchant=row.merchant.take(100),
                     category=if(row.direction==Direction.CREDIT)Category.OTHER else LocalClassifier.classify(row.merchant,row.direction),paymentMethod=if(row.description.startsWith("UPI",true))"UPI" else "Bank",
-                    notes="Imported from a bank statement. Confirm the details.",confidence=0.6,source=Source.STATEMENT,review=ReviewStatus.DRAFT,status=PaymentStatus.POSTED,reference=row.reference))
+                    notes=possible?.let { possibleDuplicateNote("Imported from a bank statement.",it) }?:"Imported from a bank statement. Confirm the details.",confidence=0.6,source=Source.STATEMENT,review=ReviewStatus.DRAFT,status=PaymentStatus.POSTED,reference=row.reference))
                 imported++
-                if(row.direction==Direction.DEBIT) { if(StatementParser.looksLikeMoneyMovement(row.merchant+" "+row.description))review++ else debits+=id }
+                if(row.direction==Direction.DEBIT) { if(possible!=null||StatementParser.looksLikeMoneyMovement(row.merchant+" "+row.description))review++ else debits+=id }
             }
             val linked=autoLinkTransfers();debits.removeAll(linked)
+            markReconciled(marks)
             database.setTransactionSuccessful();changed()
             ImportResult(imported,already,again,debits,skipped,review,linked.size/2)
         } finally { database.endTransaction() }
@@ -151,7 +210,7 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
             val tx=db.get(id)?:error("Transaction no longer exists")
             require(tx.revision==expectedRevision){"This transaction changed. Open the latest version before saving."}
             require(tx.transferId==null||amount==tx.amountPaise){"Unlink the transfer before changing its amount."}
-            val edited=tx.copy(category=category,merchant=merchant,notes=notes,amountPaise=amount,occurredAt=occurredAt,status=status)
+            val edited=tx.copy(category=category,merchant=merchant,notes=notes,amountPaise=amount,occurredAt=occurredAt,status=status,personalSharePaise=tx.personalSharePaise?.coerceAtMost(amount))
             savePolicyRows(edited, treatment, relatedId, principalPaise, tx)
             database.setTransactionSuccessful();changed()
         } finally { database.endTransaction() }

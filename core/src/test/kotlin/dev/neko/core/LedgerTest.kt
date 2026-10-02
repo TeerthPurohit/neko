@@ -39,9 +39,16 @@ class LedgerTest {
     }
     @Test fun `reports exclude drafts failed pending reversed and internal transfers`() {
         val base = Transaction(occurredAt = now, amountPaise = 10000, direction = Direction.DEBIT, account = "Cash", merchant = "Lunch", review = ReviewStatus.CONFIRMED)
-        val rows = listOf(base, base.copy(id="draft", review=ReviewStatus.DRAFT), base.copy(id="failed",status=PaymentStatus.FAILED), base.copy(id="pending",status=PaymentStatus.PENDING), base.copy(id="reversed",status=PaymentStatus.REVERSED), base.copy(id="transfer",transferId="pair"), base.copy(id="refund",amountPaise=2000,direction=Direction.CREDIT,category=Category.REFUND))
+        val rows = listOf(base, base.copy(id="draft", review=ReviewStatus.DRAFT), base.copy(id="failed",status=PaymentStatus.FAILED), base.copy(id="pending",status=PaymentStatus.PENDING), base.copy(id="reversed",status=PaymentStatus.REVERSED), base.copy(id="transfer",transferId="pair"), base.copy(id="refund",amountPaise=2000,direction=Direction.CREDIT,category=Category.REFUND,relatedTransactionId=base.id))
         val report = Ledger.report(rows, YearMonth.of(2026,10))
         assertEquals(10000, report.spending); assertEquals(8000, report.netSpending); assertEquals(0,report.income)
+    }
+    @Test fun `an unlinked refund cannot reduce personal spending`() {
+        val expense = Transaction(occurredAt=now,amountPaise=10_000,direction=Direction.DEBIT,account="ICICI",merchant="Lunch",review=ReviewStatus.CONFIRMED)
+        val unlinkedCredit = Transaction(occurredAt=now,amountPaise=10_000,direction=Direction.CREDIT,account="ICICI",merchant="Cashback",category=Category.REFUND,review=ReviewStatus.CONFIRMED)
+        val report = Ledger.report(listOf(expense,unlinkedCredit),YearMonth.of(2026,10))
+        assertEquals(10_000,report.netSpending)
+        assertEquals(0,report.refunds)
     }
     @Test fun `transfer matching requires known owned accounts and exact reference`() {
         val a = Transaction(occurredAt=now,amountPaise=50000,direction=Direction.DEBIT,account="ICICI",merchant="Me",reference="123456789012")

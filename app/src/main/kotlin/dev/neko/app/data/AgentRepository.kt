@@ -39,7 +39,7 @@ class AgentRepository(private val ledger: LedgerRepository, private val network:
             .put("direction",t.direction.name).put("category",t.category.name).put("merchant",safeMerchant(t.merchant))
             .put("status",t.status.name).put("review",t.review.name).put("account_alias",if(t.source==Source.STATEMENT)"Statement import" else t.account.substringBefore(" ·"))
             .put("transfer_id",t.transferId).put("updated_at",t.updatedAt)
-            .put("spending_treatment",t.spendingTreatment.name).put("related_transaction_id",t.relatedTransactionId).put("principal_paise",t.principalPaise) })
+            .put("spending_treatment",t.spendingTreatment.name).put("related_transaction_id",t.relatedTransactionId).put("principal_paise",t.principalPaise).put("personal_share_paise",t.personalSharePaise) })
         val budgets=JSONArray(ledger.db.budgets().map { JSONObject().put("category",it.category.name).put("amount_paise",it.amountPaise) })
         val body=JSONObject().put("transactions",txs).put("budgets",budgets)
         // The month's total budget and income (from the budget interview) let the agent pace spending; amounts only, no merchants or messages.
@@ -52,12 +52,18 @@ class AgentRepository(private val ledger: LedgerRepository, private val network:
         val list=activity.getJSONArray("activity")
         for(i in 0 until list.length()) {
             val item=list.getJSONObject(i);ledger.db.saveActivity(item)
+            // A confident cloud category is applied on its own (the ledger checks the transaction has not changed since).
+            if(item.getString("kind")=="classify")item.optString("proposal").takeIf { it.startsWith("{") }?.let { JSONObject(it) }?.let { p ->
+                runCatching { ledger.applyCloudCategory(p.getString("transaction_id"),p.getLong("expected_updated_at"),Category.valueOf(p.getString("category")),p.optDouble("confidence",0.0)) }
+            }
             if(item.getString("kind")=="chat")ledger.db.addChat("assistant",item.getString("body"),item.getString("id"))
         }
         ledger.changed();activity
     }
     suspend fun chat(message:String) {
         require(settings.aiEnabled){ "Enable cloud AI in Settings to talk with Neko" }
+        // Checked before anything is sent or saved: the message would otherwise land in the local chat table and the backend.
+        require(!Privacy.containsSecret(message)){ "Neko never stores OTPs, PINs, CVVs, passwords, or card numbers. Remove them and try again." }
         sync()
         val task=api("chat","POST",JSONObject().put("message",message))
         withContext(Dispatchers.IO){ledger.db.addChat("user",message);ledger.changed()}

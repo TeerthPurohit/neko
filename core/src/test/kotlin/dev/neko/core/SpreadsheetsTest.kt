@@ -37,6 +37,11 @@ class SpreadsheetsTest {
         val sheet1 = sheet("""<row r="1"><c r="B1"><v>90.10000000000001</v></c><c r="D1" t="inlineStr"><is><t>a, "b"</t></is></c></row>""")
         assertEquals(listOf(",90.10,,\"a, \"\"b\"\"\""), Spreadsheets.xlsxSheetsAsCsv(zip(mapOf("xl/worksheets/sheet1.xml" to sheet1)))!!.single().lines().filter { it.isNotBlank() })
     }
+    @Test fun `xlsx decimal midpoint rounds half up to the nearest paise`() {
+        val sheet1 = sheet("""<row r="1"><c r="A1"><v>1.005</v></c></row>""")
+        val csv = Spreadsheets.xlsxSheetsAsCsv(zip(mapOf("xl/worksheets/sheet1.xml" to sheet1)))!!.single()
+        assertEquals("1.01",csv.trim())
+    }
     @Test fun `files that are not xlsx are rejected and oversized archives are refused`() {
         assertNull(Spreadsheets.xlsxSheetsAsCsv("plain text".toByteArray()))
         assertNull(Spreadsheets.xlsxSheetsAsCsv(zip(mapOf("readme.txt" to "no sheets here"))))

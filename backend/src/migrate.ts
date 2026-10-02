@@ -16,6 +16,8 @@ export async function migrate(url:string):Promise<void>{
     await client.query("INSERT INTO neko.schema_migrations(version) VALUES('003_agent_learning') ON CONFLICT DO NOTHING");
     await client.query(await readFile(resolve('migrations/004_budget_plan.sql'),'utf8'));
     await client.query("INSERT INTO neko.schema_migrations(version) VALUES('004_budget_plan') ON CONFLICT DO NOTHING");
+    await client.query(await readFile(resolve('migrations/005_split_share.sql'),'utf8'));
+    await client.query("INSERT INTO neko.schema_migrations(version) VALUES('005_split_share') ON CONFLICT DO NOTHING");
     await client.query('COMMIT');
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();await pool.end();}
 }

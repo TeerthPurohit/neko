@@ -34,6 +34,17 @@ describe('Neko on real PostgreSQL',()=>{
     expect((await request('/v1/auth/logout','POST',{},token)).status).toBe(200);
     expect((await request('/v1/settings','GET',undefined,token)).status).toBe(401);
   });
+  it('revokes a directly paired device token on logout',async()=>{
+    const response=await request('/v1/pair','POST',{secret:env.NEKO_PAIRING_SECRET,name:'Temporary test device'});
+    const paired=await response.json() as {user_id:string;device_token:string};
+    try {
+      expect(response.status).toBe(201);
+      expect((await request('/v1/auth/logout','POST',{},paired.device_token)).status).toBe(200);
+      expect((await request('/v1/settings','GET',undefined,paired.device_token)).status).toBe(401);
+    } finally {
+      await db.prepare('DELETE FROM users WHERE id=?').bind(paired.user_id).run();
+    }
+  });
   it('requires consent and rejects raw SMS, preserving user isolation',async()=>{
     expect((await request('/v1/sync','POST',{transactions:[tx]},two.device_token)).status).toBe(403);
     await request('/v1/settings','PATCH',{ai_enabled:true},one.device_token);
@@ -41,6 +52,19 @@ describe('Neko on real PostgreSQL',()=>{
     const response=await request('/v1/sync','POST',{transactions:[tx]},one.device_token);
     expect(response.status).toBe(200);
     expect(await db.prepare('SELECT id FROM transactions WHERE user_id=?').bind(two.user_id).first()).toBeNull();
+  });
+  it('rejects an OTP entered in the learning command before it is stored',async()=>{
+    await request('/v1/settings','PATCH',{ai_enabled:true},one.device_token);
+    const message='Remember for next time: my bank OTP is 123456';
+    try {
+      const response=await request('/v1/chat','POST',{message},one.device_token);
+      expect(response.status).toBe(400);
+    } finally {
+      await db.prepare("DELETE FROM agent_corrections WHERE user_id=? AND correction LIKE '%123456%'").bind(one.user_id).run();
+      await db.prepare('DELETE FROM chat WHERE user_id=? AND content=?').bind(one.user_id,message).run();
+      await db.prepare("DELETE FROM activity WHERE user_id=? AND body LIKE '%123456%'").bind(one.user_id).run();
+      await request('/v1/settings','PATCH',{ai_enabled:false},one.device_token);
+    }
   });
   it('encrypts BYOK with user binding and never returns the key in settings',async()=>{
     const key='sk-or-v1-'+'k'.repeat(40);

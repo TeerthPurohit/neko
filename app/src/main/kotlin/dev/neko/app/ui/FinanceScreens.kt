@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import dev.neko.core.*
 import java.time.YearMonth
@@ -78,14 +79,14 @@ import java.util.Locale
                 if(interviewing) {
                     BudgetInterview(state.previousBudgetPaise,animateArt,onSave={total,income,limits->onSaveBudgetPlan(total,income,limits);interviewing=false},onCancel={interviewing=false})
                 } else {
-                    val reply=state.chat.lastOrNull { it.first=="assistant" }?.second
+                    val reply=state.chat.lastOrNull { it.first=="assistant" }?.second?.let { markdown(it).text }
                     val thinking=waiting||state.busy
                     val today=java.time.LocalDate.now(Ledger.india)
                     val drafts=state.transactions.count { it.review==ReviewStatus.DRAFT }
                     val line=when {
                         thinking->"Hmm, let me think about that..."
                         freshReply&&reply!=null->if(reply.length>260)reply.take(257)+"..." else reply
-                        newPayment!=null->"Ooh, I just noted ${if(newPayment.direction==Direction.CREDIT)"money in" else "a payment"}: ${rupees(newPayment.amountPaise)}${if(newPayment.merchant!="Unknown counterparty")(if(newPayment.direction==Direction.CREDIT)" from " else " to ")+newPayment.merchant else ""}!${if(drafts>1)" You have $drafts to review." else " Is the category right?"}"
+                        newPayment!=null->"Ooh, I just noted ${if(newPayment.direction==Direction.CREDIT)"money in" else "a payment"}: ${rupees(newPayment.amountPaise)}${if(newPayment.merchant!="Unknown counterparty")(if(newPayment.direction==Direction.CREDIT)" from " else " to ")+newPayment.merchant else ""}!${if(newPayment.review==ReviewStatus.CONFIRMED)" I filed it under ${newPayment.category.label}." else if(drafts>1)" You have $drafts to review." else " Is the category right?"}"
                         state.monthBudgetPaise==0L->"What's your budget for this month? Tell me and I'll keep watch for you!"
                         !state.aiEnabled->"Hi! Connect me in Settings and I'll answer questions about your money too."
                         else->{
@@ -147,7 +148,7 @@ import java.util.Locale
                         ) {
                             Column(Modifier.padding(horizontal=15.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
                                 if(!mine)Text("NEKO",style=MaterialTheme.typography.labelSmall,color=accent)
-                                Text(message.second,style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurface)
+                                Text(if(mine)AnnotatedString(message.second) else markdown(message.second),style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     }
@@ -229,6 +230,11 @@ import java.util.Locale
             if(report.funding>0)Text("Pocket money / funding ${rupees(report.funding)} · excluded from income",color=MaterialTheme.colorScheme.onSurfaceVariant)
             if(report.investmentGains>0)Text("Investment gains ${rupees(report.investmentGains)} · income",color=MaterialTheme.colorScheme.onSurfaceVariant)
             if(report.drafts>0)Text("${report.drafts} drafts excluded until you confirm them.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            val unreconciled=Ledger.unreconciledAccounts(state.transactions,chosen,state.reconciledMonths)
+            if(unreconciled.isNotEmpty()){
+                Text("Coverage incomplete",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.error)
+                Text("Built from bank SMS and manual entries for ${unreconciled.joinToString()}. Import this month's statement for ${if(unreconciled.size==1)"that account" else "those accounts"} to make sure nothing was missed.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }}
         item{SectionTitle("Where it went")}
         if(report.categories.isEmpty())item{EmptyState("A fresh month","Confirmed spending will appear here. Transfers between your own accounts are excluded.",Icons.Outlined.DonutLarge)}

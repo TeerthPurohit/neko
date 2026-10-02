@@ -20,7 +20,7 @@ object Notifications {
         if(Build.VERSION.SDK_INT>=33&&context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)return
         val intent=Intent(context,MainActivity::class.java).putExtra("transaction_id",transactionId).putExtra("open_agent",transactionId==null).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val pending=PendingIntent.getActivity(context,id.hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification=Notification.Builder(context,if(transactionId!=null)"neko_capture"else"neko_agent").setSmallIcon(R.drawable.ic_neko).setContentTitle(title).setContentText(body).setContentIntent(pending).setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE).addAction(Notification.Action.Builder(null,if(transactionId!=null)"Review"else"Open Neko",pending).build()).build()
+        val notification=Notification.Builder(context,if(transactionId!=null)"neko_capture"else"neko_agent").setSmallIcon(R.drawable.ic_neko).setContentTitle(title).setContentText(body).setStyle(Notification.BigTextStyle().bigText(body)).setContentIntent(pending).setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE).addAction(Notification.Action.Builder(null,if(transactionId!=null)"Review"else"Open Neko",pending).build()).build()
         context.getSystemService(NotificationManager::class.java).notify(id.hashCode(),notification)
     }
 }

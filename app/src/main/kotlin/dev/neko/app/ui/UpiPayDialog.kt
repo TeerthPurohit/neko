@@ -26,12 +26,16 @@ internal fun scannedFields(prefill: UpiPay.Parsed?, vpa: String, name: String, p
     return if (edited) prefill.extras - "sign" else prefill.extras
 }
 
+/** The scanned code exactly as scanned, while nothing in it was changed; its signature is only valid for the original text. */
+internal fun unchangedScan(prefill: UpiPay.Parsed?, vpa: String, name: String, paise: Long?, note: String): String? =
+    prefill?.raw?.takeIf { it.isNotEmpty() && vpa == prefill.vpa && name == prefill.name && note == prefill.note && prefill.amountPaise != null && paise == prefill.amountPaise }
+
 /**
  * Pay someone from Neko: scan their UPI QR code (or type the details), the payment is saved first, then Google Pay, PhonePe or any other
  * UPI app opens with the details filled in. Nothing is counted in reports until the UPI app (or your bank's SMS) confirms it.
  * [prefill] comes from a scanned QR code; its merchant fields are kept only while the UPI ID is unchanged.
  */
-@Composable fun UpiPayDialog(prefill: UpiPay.Parsed?, onScan: () -> Unit, onDismiss: () -> Unit, onPay: (vpa: String, name: String, amountPaise: Long, note: String, extras: Map<String, String>) -> Unit) {
+@Composable fun UpiPayDialog(prefill: UpiPay.Parsed?, onScan: () -> Unit, onDismiss: () -> Unit, onPay: (vpa: String, name: String, amountPaise: Long, note: String, extras: Map<String, String>, scanned: String?) -> Unit) {
     var vpa by rememberSaveable(prefill) { mutableStateOf(prefill?.vpa.orEmpty()) }
     var name by rememberSaveable(prefill) { mutableStateOf(prefill?.name.orEmpty()) }
     var amount by rememberSaveable(prefill) { mutableStateOf(prefill?.amountPaise?.let { if (it % 100 == 0L) (it / 100).toString() else Money.decimal(it) }.orEmpty()) }
@@ -53,10 +57,12 @@ internal fun scannedFields(prefill: UpiPay.Parsed?, vpa: String, name: String, p
                     isError = tried && paise == null, supportingText = { if (tried && paise == null) Text("Enter an amount like 250 or 99.50") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedTextField(note, { note = it.take(80) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Note (optional)") })
-                Text("Neko saves this payment now and updates it when it goes through.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val merchant = UpiPay.isMerchant(scannedFields(prefill, vpa, name, paise, note))
+                Text(if (merchant) "Neko saves this payment now and updates it when it goes through."
+                    else "UPI apps block payment links to people that other apps open, so Neko copies the UPI ID and opens your UPI app. Paste it there and pay; Neko matches your bank SMS.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { TextButton({ tried = true; if (vpaOk && paise != null) onPay(vpa, name, paise, note, scannedFields(prefill, vpa, name, paise, note)) }) { Text("Open UPI app") } },
+        confirmButton = { TextButton({ tried = true; if (vpaOk && paise != null) onPay(vpa, name, paise, note, scannedFields(prefill, vpa, name, paise, note), unchangedScan(prefill, vpa, name, paise, note)) }) { Text("Open UPI app") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
     )
 }

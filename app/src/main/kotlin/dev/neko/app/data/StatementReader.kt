@@ -71,7 +71,7 @@ object StatementReader {
     }
 
     /** True for HTML or XML text (after an optional byte-order mark and spaces). */
-    private fun looksLikeMarkup(bytes: ByteArray): Boolean = String(bytes, 0, minOf(bytes.size, 512), Charsets.ISO_8859_1).trimStart('﻿', 'ï', '»', '¿', ' ', '\t', '\r', '\n').startsWith("<")
+    private fun looksLikeMarkup(bytes: ByteArray): Boolean = String(bytes, 0, minOf(bytes.size, 512), Charsets.ISO_8859_1).trimStart(Char(0xFEFF), 'ï', '»', '¿', ' ', '\t', '\r', '\n').startsWith("<")
 
     /** One CSV string per sheet of a classic binary .xls workbook. */
     private fun xlsSheets(bytes: ByteArray): List<String> {

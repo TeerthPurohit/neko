@@ -87,6 +87,15 @@ def test_report_excludes_drafts_failures_and_own_transfers():
     assert summarize(rows)['drafts'] == 1
 
 
+def test_split_payment_counts_only_my_share():
+    tx = request().transactions[0].model_copy(update={'review': 'CONFIRMED', 'direction': 'DEBIT', 'personal_share_paise': 333})
+    repaid = tx.model_copy(update={'id': 'repaid', 'direction': 'CREDIT', 'spending_treatment': 'FRIEND_REIMBURSEMENT',
+                                   'related_transaction_id': tx.id, 'personal_share_paise': None, 'amount_paise': 666})
+    result = summarize([tx, repaid])
+    assert result['spending_paise'] == 333
+    assert result['reimbursements_paise'] == 0
+
+
 def test_service_authentication_and_validation_do_not_echo_secrets(monkeypatch):
     from fastapi.testclient import TestClient
     from neko_agent.server import app

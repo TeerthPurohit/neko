@@ -25,6 +25,11 @@ export function plan(input: unknown): Plan {
 export function redact(input: string): string {
   return input.replace(/[\w.+-]+@[\w.-]+/g,'[private counterparty]').replace(/\b\d{4,}\b/g,'[private number]').slice(0,100);
 }
+/** Secrets Neko must never store: OTPs, PINs, CVVs, passwords, and full card numbers. */
+export function rejectSensitive(input: string): void {
+  if (/\b(otp|one[\s-]?time\s+pass(word|code)|m?pin|cvv|cvc|pass(word|code))\b/i.test(input) || /\b(?:\d[ -]?){13,19}\b/.test(input))
+    throw new ApiError(400,'Neko never stores OTPs, PINs, CVVs, passwords, or card numbers. Remove them and try again.');
+}
 export function transaction(input: unknown): Tx {
   const t = object(input);
   if (Object.keys(t).some(k => /sms|body|otp|password|pin|reference|notes/i.test(k))) throw new ApiError(400,'Raw SMS and sensitive fields are not accepted');
@@ -49,6 +54,7 @@ export function transaction(input: unknown): Tx {
     spending_treatment:spendingTreatment,
     related_transaction_id:related,
     principal_paise:principal,
+    personal_share_paise:t.personal_share_paise == null ? null : integer(t.personal_share_paise,0,amount),
   };
 }
 export function equalShares(amount: number, ids: string[]): { user_id: string; amount_paise: number }[] {

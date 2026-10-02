@@ -14,10 +14,16 @@ class IndianBankParser(override val bank: String, private val senderCodes: Set<S
     override fun parse(sms: BankSms): Transaction? {
         if (!accepts(sms.sender)) return null
         val body = sms.body.replace(Regex("\\s+"), " ").trim()
-        if (Regex("\\b(OTP|one.time.password|verification code)\\b", RegexOption.IGNORE_CASE).containsMatchIn(body)) return null
-        val debit = Regex("\\b(debited|spent|paid|withdrawn|sent|purchase|payment of)\\b", RegexOption.IGNORE_CASE).containsMatchIn(body)
-        val credit = Regex("\\b(credited|received|refund|refunded|reversed|reversal)\\b", RegexOption.IGNORE_CASE).containsMatchIn(body)
-        if (!debit && !credit) return null
+        // A security footer ("Do not share your OTP") is not an OTP message; drop such sentences before deciding.
+        val withoutFooter = body.split(Regex("(?<=[.!])\\s+")).filterNot { Regex("\\b(do not|don't|never)\\s+share\\b|\\bnever asks?\\b", RegexOption.IGNORE_CASE).containsMatchIn(it) }.joinToString(" ")
+        if (Regex("\\b(OTP|one.time.password|verification code)\\b", RegexOption.IGNORE_CASE).containsMatchIn(withoutFooter)) return null
+        // Hindi words carry no \b boundary in Java regex (Devanagari is not \w), so they are matched as plain substrings.
+        val debit = Regex("\\b(debited|spent|paid|withdrawn|sent|purchase|payment of)\\b|डेबिट|निकाल|भुगतान|खर्च", RegexOption.IGNORE_CASE).containsMatchIn(body)
+        val credit = Regex("\\b(credited|received|refund|refunded|reversed|reversal)\\b|क्रेडिट|जमा|प्राप्त", RegexOption.IGNORE_CASE).containsMatchIn(body)
+        // A known bank's notice in a script Neko cannot read is kept as a low-confidence draft rather than silently dropped.
+        // English bodies with no transaction verb (balance alerts, offers) are still ignored.
+        val unreadable = !debit && !credit && Regex("[\\p{L}&&[^\\p{IsLatin}]]").containsMatchIn(body)
+        if (!debit && !credit && !unreadable) return null
         // Ignore balance-only notices and promotional messages; amount is selected near a transaction verb.
         val amountPattern = Regex("(?:INR|Rs\\.?|₹)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", RegexOption.IGNORE_CASE)
         val amounts = amountPattern.findAll(body).toList()
@@ -40,13 +46,20 @@ class IndianBankParser(override val bank: String, private val senderCodes: Set<S
         val direction = if (refund || (credit && !debit)) Direction.CREDIT else Direction.DEBIT
         val method = when { body.contains("UPI", true) -> "UPI"; body.contains("NEFT", true) -> "NEFT"; body.contains("IMPS", true) -> "IMPS"; body.contains("card", true) -> "Card"; body.contains("ATM", true) -> "ATM"; else -> "Bank" }
         val normalized = body.lowercase().replace(Regex("\\s+"), " ")
-        val fingerprint = if (ref != null && account != null) sha256("$bank:$account:$ref:$direction") else sha256("$bank:$normalized")
+        // A bank reference identifies the payment across its pending/posted notices. Without one, the same text at another time is another
+        // payment, so the timestamp is part of the identity; replays of one SMS carry the same timestamp (see SmsInbox).
+        val fingerprint = when {
+            ref != null && account != null -> sha256("$bank:$account:$ref:$direction")
+            ref != null -> sha256("$bank:$ref:$direction")
+            else -> sha256("$bank:$normalized:${sms.receivedAt}")
+        }
         return Transaction(id = fingerprint, occurredAt = sms.receivedAt, amountPaise = amount, direction = direction,
             account = "$bank · ${account ?: "unidentified"}", merchant = merchant,
             category = if (refund) Category.REFUND else LocalClassifier.classify(merchant, direction), paymentMethod = method,
-            confidence = if (account != null && ref != null && merchant != "Unknown counterparty") 0.92 else 0.60,
+            confidence = if (unreadable) 0.30 else if (account != null && ref != null && merchant != "Unknown counterparty") 0.92 else 0.60,
             source = Source.SMS, review = ReviewStatus.DRAFT, status = status, reference = ref, fingerprint = fingerprint,
-            notes = "Captured at SMS receipt time. Confirm the transaction date if the notice was delayed.")
+            notes = if (unreadable) "Neko could not read whether this money left or arrived. Check the original notice and fix the direction before confirming."
+                else "Captured at SMS receipt time. Confirm the transaction date if the notice was delayed.")
     }
 }
 

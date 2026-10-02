@@ -1,8 +1,9 @@
 import { ApiError, categories, models, type Env, type User, type BackgroundContext } from './types';
 import { authenticate, hash, json, membership, token, passwordHash, encryptModelKey } from './security';
-import { choice, equalShares, integer, object, plan, text, transaction } from './validation';
+import { choice, equalShares, integer, object, plan, rejectSensitive, text, transaction } from './validation';
 import { enqueue, nextDailyRun, processTask, scheduled } from './tasks';
 import { corrections, saveCorrection } from './learning';
+import { limit } from './ai';
 
 async function body(req:Request):Promise<Record<string,unknown>> {
   if(Number(req.headers.get('Content-Length')||0)>100_000) throw new ApiError(413,'Payload is too large');
@@ -53,7 +54,13 @@ async function route(req:Request,env:Env,ctx:BackgroundContext):Promise<Response
     await env.DB.prepare('DELETE FROM agent_corrections WHERE id=? AND user_id=?').bind(path.slice('/v1/agent/corrections/'.length),user.id).run();
     return json({ok:true});
   }
-  if(path==='/v1/auth/logout'&&req.method==='POST'){await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await hash(req.headers.get('Authorization')!.slice(7))).run();return json({ok:true});}
+  if(path==='/v1/auth/logout'&&req.method==='POST'){
+    const fingerprint=await hash(req.headers.get('Authorization')!.slice(7));
+    await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(fingerprint).run();
+    // A paired device authenticates through users.token_hash; rotate it to an unknown value so the old token stops working.
+    await env.DB.prepare('UPDATE users SET token_hash=? WHERE token_hash=? AND email IS NULL').bind(await hash(token()),fingerprint).run();
+    return json({ok:true});
+  }
   if(path==='/v1/byok'&&req.method==='POST') {
     const data=await body(req),key=text(data.key,512);
     if(!/^sk-or-[A-Za-z0-9_-]{20,}$/.test(key))throw new ApiError(400,'Enter a valid OpenRouter API key');
@@ -62,7 +69,7 @@ async function route(req:Request,env:Env,ctx:BackgroundContext):Promise<Response
     await env.DB.prepare('UPDATE users SET model_key_ciphertext=? WHERE id=?').bind(await encryptModelKey(env,user.id,key),user.id).run();return json({ok:true});
   }
   if(path==='/v1/byok'&&req.method==='DELETE'){await env.DB.prepare('UPDATE users SET model_key_ciphertext=NULL,ai_enabled=0 WHERE id=?').bind(user.id).run();return json({ok:true});}
-  if(path==='/v1/settings'&&req.method==='GET')return json({user_id:user.id,name:user.name,ai_enabled:!!user.ai_enabled,model:user.model,models:models(env),has_model_key:!!user.model_key_ciphertext,paid_ai_allowed:env.ALLOW_PAID_AI==='true',daily_requests:Number(env.DAILY_AI_REQUESTS),monthly_budget_usd:Number(env.MONTHLY_AI_BUDGET_USD),last_sync:user.last_sync});
+  if(path==='/v1/settings'&&req.method==='GET')return json({user_id:user.id,name:user.name,ai_enabled:!!user.ai_enabled,model:user.model,models:models(env),has_model_key:!!user.model_key_ciphertext,paid_ai_allowed:env.ALLOW_PAID_AI==='true',daily_requests:limit(env.DAILY_AI_REQUESTS,100),monthly_budget_usd:limit(env.MONTHLY_AI_BUDGET_USD,2),last_sync:user.last_sync});
   if(path==='/v1/settings'&&req.method==='PATCH') {
     const data=await body(req);
     const enabled=typeof data.ai_enabled==='boolean'?data.ai_enabled:!!user.ai_enabled;
@@ -78,7 +85,7 @@ async function route(req:Request,env:Env,ctx:BackgroundContext):Promise<Response
     if(!Array.isArray(data.transactions)||data.transactions.length>150)throw new ApiError(400,'Send at most 150 structured transactions');
     const txs=data.transactions.map(transaction);
     const budgets=Array.isArray(data.budgets)?data.budgets.slice(0,20).map(v=>{const b=object(v);return {category:choice(b.category,categories),amount:integer(b.amount_paise,1,1_000_000_000)};}):[];
-    const stmts=txs.map(t=>env.DB.prepare(`INSERT INTO transactions(user_id,id,occurred_at,amount_paise,direction,category,merchant,status,review,account_alias,transfer_id,updated_at,spending_treatment,related_transaction_id,principal_paise) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,id) DO UPDATE SET occurred_at=excluded.occurred_at,amount_paise=excluded.amount_paise,direction=excluded.direction,category=excluded.category,merchant=excluded.merchant,status=excluded.status,review=excluded.review,account_alias=excluded.account_alias,transfer_id=excluded.transfer_id,updated_at=excluded.updated_at,spending_treatment=excluded.spending_treatment,related_transaction_id=excluded.related_transaction_id,principal_paise=excluded.principal_paise WHERE excluded.updated_at>=transactions.updated_at`).bind(user.id,t.id,t.occurred_at,t.amount_paise,t.direction,t.category,t.merchant,t.status,t.review,t.account_alias,t.transfer_id,t.updated_at,t.spending_treatment,t.related_transaction_id,t.principal_paise));
+    const stmts=txs.map(t=>env.DB.prepare(`INSERT INTO transactions(user_id,id,occurred_at,amount_paise,direction,category,merchant,status,review,account_alias,transfer_id,updated_at,spending_treatment,related_transaction_id,principal_paise,personal_share_paise) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,id) DO UPDATE SET occurred_at=excluded.occurred_at,amount_paise=excluded.amount_paise,direction=excluded.direction,category=excluded.category,merchant=excluded.merchant,status=excluded.status,review=excluded.review,account_alias=excluded.account_alias,transfer_id=excluded.transfer_id,updated_at=excluded.updated_at,spending_treatment=excluded.spending_treatment,related_transaction_id=excluded.related_transaction_id,principal_paise=excluded.principal_paise,personal_share_paise=excluded.personal_share_paise WHERE excluded.updated_at>=transactions.updated_at`).bind(user.id,t.id,t.occurred_at,t.amount_paise,t.direction,t.category,t.merchant,t.status,t.review,t.account_alias,t.transfer_id,t.updated_at,t.spending_treatment,t.related_transaction_id,t.principal_paise,t.personal_share_paise));
     stmts.push(env.DB.prepare('UPDATE users SET last_sync=? WHERE id=?').bind(Date.now(),user.id));
     stmts.push(env.DB.prepare('DELETE FROM budgets WHERE user_id=?').bind(user.id));
     for(const b of budgets)stmts.push(env.DB.prepare('INSERT INTO budgets(user_id,category,amount_paise) VALUES(?,?,?)').bind(user.id,b.category,b.amount));
@@ -96,6 +103,7 @@ async function route(req:Request,env:Env,ctx:BackgroundContext):Promise<Response
   if(path==='/v1/chat'&&req.method==='POST') {
     if(!user.ai_enabled)throw new ApiError(403,'Cloud AI is disabled');
     const data=await body(req),question=text(data.message,2000);
+    rejectSensitive(question);
     // An explicit chat command makes learning available in the existing Android UI.
     const remember=question.match(/^remember for next time:\s*([\s\S]+)$/i);
     if(remember) {

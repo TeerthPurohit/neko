@@ -7,11 +7,17 @@ type Message = { role: string; content?: string | null; tool_call_id?: string; t
 type ToolCall = { id: string; function: { name: string; arguments: string } };
 export interface AgentAnswer { reply: string; proposals: ReturnType<typeof confirmedProposal>[]; model: string; cost: number; routing:{source:string;confidence:number;model:string} }
 
+/** A configured limit; blank means the default, and an explicit 0 (or an unreadable value) allows nothing. */
+export function limit(value: string|undefined, fallback: number): number {
+  if (value==null||!value.trim()) return fallback;
+  const n=Number(value);
+  return Number.isFinite(n)&&n>0?n:0;
+}
 export async function reserve(env: Env, user: User, cost = 0.02): Promise<{day:string;cost:number}> {
   const day = new Date().toISOString().slice(0,10), month=day.slice(0,7);
   await env.DB.prepare('INSERT OR IGNORE INTO usage(user_id,day,month) VALUES(?,?,?)').bind(user.id,day,month).run();
   const result = await env.DB.prepare(`UPDATE usage SET requests=requests+1,reserved=reserved+? WHERE user_id=? AND day=? AND requests<? AND (SELECT COALESCE(SUM(cost+reserved),0) FROM usage WHERE user_id=? AND month=?) + ? <= ?`)
-    .bind(cost,user.id,day,Number(env.DAILY_AI_REQUESTS)||100,user.id,month,cost,Number(env.MONTHLY_AI_BUDGET_USD)||2).run();
+    .bind(cost,user.id,day,limit(env.DAILY_AI_REQUESTS,100),user.id,month,cost,limit(env.MONTHLY_AI_BUDGET_USD,2)).run();
   if (!result.meta.changes) throw new ApiError(429,'Your AI allowance is reached. Capturing transactions continues locally.');
   return {day,cost};
 }
@@ -76,19 +82,21 @@ export function summarize(rows: Tx[]): { spending_paise:number; net_spending_pai
       if(!other||other.related_transaction_id!==tx.id||other.amount_paise!==tx.amount_paise||other.direction===tx.direction||treatment(other)!=='TEMPORARY_MOVEMENT')out.drafts++;
     }
     if(tx.direction==='DEBIT'){
-      if(kind==='PERSONAL_SPENDING'){out.spending_paise+=tx.amount_paise;out.by_category[tx.category]=(out.by_category[tx.category]||0)+tx.amount_paise;}
+      // A split payment counts only the user's share.
+      if(kind==='PERSONAL_SPENDING'){const cost=tx.personal_share_paise??tx.amount_paise;out.spending_paise+=cost;out.by_category[tx.category]=(out.by_category[tx.category]||0)+cost;}
       continue;
     }
     if(kind==='REVIEW_REQUIRED'){out.drafts++;continue;}
     if(kind==='REFUND'||kind==='FRIEND_REIMBURSEMENT'){
       const original=tx.related_transaction_id?expenses.get(tx.related_transaction_id):undefined;
-      if(original){
-        const remaining=Math.max(0,original.amount_paise-(applied.get(original.id)||0));
+      // A friend's repayment of a split payment settles the split; their part never counted as spending.
+      if(original&&original.personal_share_paise!=null&&kind==='FRIEND_REIMBURSEMENT'){}
+      else if(original){
+        const remaining=Math.max(0,(original.personal_share_paise??original.amount_paise)-(applied.get(original.id)||0));
         const offset=Math.min(tx.amount_paise,remaining);applied.set(original.id,(applied.get(original.id)||0)+offset);
         if(kind==='REFUND')out.refunds_paise+=offset;else out.reimbursements_paise+=offset;
         out.by_category[original.category]=Math.max(0,(out.by_category[original.category]||0)-offset);
-      }else if(tx.related_transaction_id==null&&tx.category==='REFUND')out.refunds_paise+=tx.amount_paise;
-      else out.drafts++;
+      }else out.drafts++; // An unlinked refund stays under review; it never offsets spending on its own.
     }else if(kind==='FUNDING')out.funding_paise+=tx.amount_paise;
     else if(kind==='INCOME')out.income_paise+=tx.amount_paise;
     else if(kind==='INVESTMENT_RETURN'){
@@ -106,7 +114,7 @@ export async function chat(env: Env,user: User,question: string,taskId='manual',
   if ((!env.AGENT_SERVICE_URL?.startsWith('https://') && env.AGENT_SERVICE_URL!=='http://127.0.0.1:8081') || !env.AGENT_SERVICE_TOKEN) throw new ApiError(503,'Configure the LangGraph and nanobot agent service');
   const key=await modelKey(env,user);
   if (!key) throw new ApiError(503,'Connect your OpenRouter key first');
-  const rows=(await env.DB.prepare('SELECT id,occurred_at,amount_paise,direction,category,merchant,status,review,account_alias,transfer_id,updated_at,spending_treatment,related_transaction_id,principal_paise FROM transactions WHERE user_id=? ORDER BY occurred_at DESC LIMIT 150').bind(user.id).all<Tx>()).results;
+  const rows=(await env.DB.prepare('SELECT id,occurred_at,amount_paise,direction,category,merchant,status,review,account_alias,transfer_id,updated_at,spending_treatment,related_transaction_id,principal_paise,personal_share_paise FROM transactions WHERE user_id=? ORDER BY occurred_at DESC LIMIT 150').bind(user.id).all<Tx>()).results;
   const budgets=(await env.DB.prepare('SELECT category,amount_paise FROM budgets WHERE user_id=?').bind(user.id).all()).results;
   const history=(await env.DB.prepare('SELECT role,content FROM chat WHERE user_id=? ORDER BY created_at DESC LIMIT 8').bind(user.id).all()).results.reverse();
   const learned=await corrections(env,user.id);

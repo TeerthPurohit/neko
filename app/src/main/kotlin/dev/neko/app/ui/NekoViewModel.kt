@@ -10,7 +10,8 @@ import kotlinx.coroutines.flow.*
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class ActivityItem(val id:String,val title:String,val body:String,val kind:String,val createdAt:Long,val proposals:List<Proposal>)
+/** [undoable]: something Neko did on its own that the user can still undo. */
+data class ActivityItem(val id:String,val title:String,val body:String,val kind:String,val createdAt:Long,val proposals:List<Proposal>,val undoable:Boolean=false)
 data class Proposal(val transactionId:String,val category:Category,val expectedUpdatedAt:Long,val reason:String)
 data class GoalItem(val id:String,val title:String,val hour:Int,val enabled:Boolean)
 data class GroupItem(val id:String,val name:String,val source:String,val members:Int=0)
@@ -28,6 +29,12 @@ data class NekoState(
     val monthBudgetPaise:Long=0,val monthIncomePaise:Long=0,val previousBudgetPaise:Long=0,
     /** A UPI payment whose outcome the payment app did not report; the user is asked whether it went through. */
     val upiPromptId:String?=null,
+    /** "account|yyyy-MM" months a bank statement has been imported for; other months' totals are SMS/manual only. */
+    val reconciledMonths:Set<String> = emptySet(),
+    /** Neko files and confirms transactions on its own when it is sure. */
+    val autopilot:Boolean=true,
+    /** The local Splitwise: people the user splits with, splits, settle-ups, and payments Neko already asked about splitting. */
+    val people:List<String> = emptyList(),val splitExpenses:List<SplitExpense> = emptyList(),val settlements:List<Settlement> = emptyList(),val splitGroups:List<SplitGroup> = emptyList(),val splitAsked:Set<String> = emptySet(),
     /** What the last statement import did; shown once so the user can confirm the imported spending. */
     val statementResult:dev.neko.app.data.ImportResult?=null,
 )
@@ -47,18 +54,20 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
     }
     private suspend fun reload() {
         val result=withContext(Dispatchers.IO) {
+            // Repeating split expenses (rent, subscriptions) add their next copy once it is due.
+            Splits.dueRepeats(app.ledger.db.expenses(),java.time.LocalDate.now(Ledger.india)).forEach(app.ledger.db::saveExpense)
             val s=app.settings;val agent=JSONObject(s.get("agent_state","{}"));val goals=agent.optJSONArray("goals")?:JSONArray();val usage=agent.optJSONArray("usage")?:JSONArray()
             val splitGroups=JSONArray(s.get("splitwise_groups","[]"));val splitExpenses=JSONArray(s.get("splitwise_expenses","[]"));val cloudGroups=JSONArray(s.get("neko_groups","[]"))
             mutable.value.copy(loading=false,transactions=app.ledger.db.transactions(),budgets=app.ledger.db.budgets(),ownAccounts=app.ledger.db.ownAccounts(),
                 activity=app.ledger.db.activity().map { j ->
                     val raw=j.optString("proposal","null");val list=if(raw.startsWith("["))JSONArray(raw) else if(raw.startsWith("{"))JSONArray().put(JSONObject(raw))else JSONArray()
-                    ActivityItem(j.getString("id"),j.getString("title"),j.getString("body"),j.getString("kind"),j.getLong("created_at"),(0 until list.length()).mapNotNull { i -> try {val p=list.getJSONObject(i);Proposal(p.getString("transaction_id"),Category.valueOf(p.getString("category")),p.getLong("expected_updated_at"),p.getString("reason"))}catch(_:Exception){null} })
+                    ActivityItem(j.getString("id"),j.getString("title"),j.getString("body"),j.getString("kind"),j.getLong("created_at"),(0 until list.length()).mapNotNull { i -> try {val p=list.getJSONObject(i);Proposal(p.getString("transaction_id"),Category.valueOf(p.getString("category")),p.getLong("expected_updated_at"),p.getString("reason"))}catch(_:Exception){null} },j.has("undo"))
                 },chat=app.ledger.db.chat(),goals=(0 until goals.length()).map {i->goals.getJSONObject(i).let{GoalItem(it.getString("id"),it.getString("title"),it.getInt("hour"),it.getInt("enabled")==1)}},
                 groups=(0 until splitGroups.length()).mapNotNull { i->splitGroups.getJSONObject(i).let { if(it.getLong("id")==0L)null else GroupItem(it.getLong("id").toString(),it.getString("name"),"Splitwise",it.optJSONArray("members")?.length()?:0) } } + (0 until cloudGroups.length()).map {i->cloudGroups.getJSONObject(i).let{GroupItem(it.getString("id"),it.getString("name"),"Neko")}},
                 expenses=(0 until splitExpenses.length()).mapNotNull { i->splitExpenses.getJSONObject(i).let { if(!it.isNull("deleted_at"))null else ExpenseItem(it.getString("description"),it.getString("cost"),it.getString("currency_code"),it.optLong("group_id").toString()) } },
                 theme=s.theme,reducedMotion=s.reducedMotion,aiEnabled=s.aiEnabled,paired=s.deviceToken.isNotBlank(),paused=s.paused,backendUrl=s.backendUrl,splitwiseConnected=s.splitwiseKey.isNotBlank(),lastSync=s.get("last_sync","0").toLong(),model=s.get("model","xiaomi/mimo-v2.6-pro"),models=s.get("models","xiaomi/mimo-v2.6-pro").split(','),
                 usageRequests=(0 until usage.length()).sumOf {usage.getJSONObject(it).getInt("requests")},usageCost=(0 until usage.length()).sumOf {usage.getJSONObject(it).getDouble("cost")},userName=s.get("user_name","You"),pendingTasks=agent.optJSONArray("tasks")?.let { tasks->(0 until tasks.length()).count {tasks.getJSONObject(it).optString("status") in listOf("queued","running")} }?:0,
-                hasModelKey=s.get("has_model_key","false").toBoolean(),offlineProfile=s.get("offline_profile","false").toBoolean(),byokDeferred=s.get("byok_deferred","false").toBoolean(),
+                hasModelKey=s.get("has_model_key","false").toBoolean(),reconciledMonths=app.ledger.reconciledMonths(),autopilot=s.autopilot,people=app.ledger.db.people(),splitExpenses=app.ledger.db.expenses(),settlements=app.ledger.db.settlements(),splitGroups=app.ledger.db.groups(),splitAsked=s.get("split_asked").split('\n').filter{it.isNotBlank()}.toSet(),offlineProfile=s.get("offline_profile","false").toBoolean(),byokDeferred=s.get("byok_deferred","false").toBoolean(),
                 firebaseConfigured=com.google.firebase.FirebaseApp.getApps(app).isNotEmpty(),
                 monthBudgetPaise=if(s.get("month_budget_month")==java.time.YearMonth.now(Ledger.india).toString())s.get("month_budget_paise","0").toLongOrNull()?:0 else 0,
                 monthIncomePaise=if(s.get("month_budget_month")==java.time.YearMonth.now(Ledger.india).toString())s.get("month_income_paise","0").toLongOrNull()?:0 else 0,
@@ -122,12 +131,13 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
     }
     fun dismissStatementResult(){mutable.update{it.copy(statementResult=null)}}
     /** Saves the payment as pending first, then hands the `upi://pay` link to [launch] so a crash or a back-press never loses the record. */
-    // Payments are never skipped because another action (such as waiting for a chat reply) is still running.
+    // Payments and splits are never skipped because another action (such as waiting for a chat reply) is still running.
     private fun background(block:suspend ()->Unit){
         viewModelScope.launch{try{block();reload()}catch(error:CancellationException){throw error}catch(error:Exception){mutable.update{it.copy(error=error.message?:"Could not complete this action")}}}
     }
-    fun beginUpi(vpa:String,name:String,amountPaise:Long,note:String,extras:Map<String,String>,launch:(String)->Unit)=background {
-        val link=UpiPay.link(vpa,name,amountPaise,note,extras)
+    // [launch] gets a payment link for merchant codes (the scanned code itself when unchanged), or null for a person, whom the user pays inside their UPI app.
+    fun beginUpi(vpa:String,name:String,amountPaise:Long,note:String,extras:Map<String,String>,scanned:String?,launch:(String?)->Unit)=background {
+        val link=if(!UpiPay.isMerchant(extras))null else scanned?:UpiPay.link(vpa,name,amountPaise,note,extras)
         app.ledger.startUpi(vpa,name,amountPaise,note)
         launch(link)
     }
@@ -151,8 +161,61 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
     }
     fun setOwned(account:String,value:Boolean)=action{withContext(Dispatchers.IO){app.ledger.db.setOwned(account,value);app.ledger.changed()}}
     fun theme(value:String)=action{app.settings.theme=value;app.ledger.changed()}
+    fun addPerson(name:String)=background{require(name.isNotBlank()&&name.length<=40){"Enter a name of up to 40 characters"};withContext(Dispatchers.IO){app.ledger.db.addPerson(name)};app.ledger.changed()}
+    /** The user's part of a bank payment they split becomes what counts as their spending; null when the payment is no longer split. */
+    private fun setShare(transactionId:String?,share:Long?){
+        val tx=transactionId?.let(app.ledger.db::get)?:return
+        if(tx.personalSharePaise!=share)app.ledger.db.save(tx.copy(personalSharePaise=share?.coerceIn(0,tx.amountPaise),updatedAt=System.currentTimeMillis(),revision=tx.revision+1))
+    }
+    /** Saves a new or edited split expense; everyone named is remembered for next time. */
+    fun saveExpense(expense:SplitExpense)=background{
+        require(expense.title.isNotBlank()){"Say what it was for"}
+        require((expense.shares.keys+expense.paidBy).none{it.length>40}){"Names can be up to 40 characters"}
+        withContext(Dispatchers.IO){
+            val db=app.ledger.db
+            val previous=db.expenses().firstOrNull{it.id==expense.id}
+            db.saveExpense(expense)
+            (expense.shares.keys+expense.paidBy).filterNot{Splits.same(it,ME)}.forEach(db::addPerson)
+            if(previous?.transactionId!=null&&previous.transactionId!=expense.transactionId)setShare(previous.transactionId,null)
+            setShare(expense.transactionId,if(Splits.same(expense.paidBy,ME))expense.shares.entries.firstOrNull{Splits.same(it.key,ME)}?.value?:0L else null)
+        }
+        app.ledger.changed();AgentWork.syncNow(app)
+    }
+    fun removeExpense(id:String)=background{
+        withContext(Dispatchers.IO){val e=app.ledger.db.expenses().firstOrNull{it.id==id};app.ledger.db.deleteSplitEntry(id);setShare(e?.transactionId,null)}
+        app.ledger.changed();AgentWork.syncNow(app)
+    }
+    fun settle(settlement:Settlement)=background{
+        require(settlement.paise>0){"Enter an amount above zero"};require(!Splits.same(settlement.from,settlement.to)){"Choose two different people"}
+        withContext(Dispatchers.IO){app.ledger.db.saveSettlement(settlement)};app.ledger.changed()
+    }
+    fun removeSplitEntry(id:String)=background{withContext(Dispatchers.IO){app.ledger.db.deleteSplitEntry(id)};app.ledger.changed()}
+    fun saveGroup(group:SplitGroup)=background{
+        require(group.name.isNotBlank()&&group.name.length<=40){"Name the group (up to 40 characters)"};require(group.members.size>=2){"A group needs you and at least one more person"}
+        withContext(Dispatchers.IO){app.ledger.db.saveGroup(group);group.members.filterNot{Splits.same(it,ME)}.forEach(app.ledger.db::addPerson)};app.ledger.changed()
+    }
+    /** Remembers that the user answered about these payments, so the "anything to split?" question is not repeated. */
+    fun markSplitAsked(ids:Collection<String>)=background{
+        if(ids.isEmpty())return@background
+        app.settings.put("split_asked",(app.settings.get("split_asked").split('\n').filter{it.isNotBlank()}+ids).distinct().takeLast(300).joinToString("\n"));app.ledger.changed()
+    }
+    fun autopilot(value:Boolean)=action{app.settings.autopilot=value;app.ledger.changed()}
+    fun undoAuto(id:String)=action{app.ledger.undoAuto(id);note("Undone. It's back in your review list.");AgentWork.syncNow(app)}
     fun motion(value:Boolean)=action{app.settings.reducedMotion=value;app.ledger.changed()}
-    fun pause(value:Boolean)=action{app.settings.paused=value;app.ledger.changed();for(goal in mutable.value.goals)app.agent.pauseGoal(goal.id,!value)}
+    // Pausing remembers which responsibilities were on, so resuming never switches on one the user had turned off themselves.
+    fun pause(value:Boolean)=action{
+        if(app.settings.paused==value)return@action
+        if(value){
+            val enabled=mutable.value.goals.filter{it.enabled}.map{it.id}
+            app.settings.put("goals_paused_with_neko",enabled.joinToString(","))
+            app.settings.paused=true;app.ledger.changed()
+            for(id in enabled)app.agent.pauseGoal(id,false)
+        }else{
+            app.settings.paused=false;app.ledger.changed()
+            for(id in app.settings.get("goals_paused_with_neko").split(',').filter{it.isNotBlank()})app.agent.pauseGoal(id,true)
+            app.settings.remove("goals_paused_with_neko")
+        }
+    }
     fun pair(url:String,key:String,name:String)=action{app.agent.pair(url,key,name);app.settings.put("user_name",name);app.ledger.changed();note("Backend connected. You can now enable cloud AI.")}
     fun login(url:String,email:String,password:String,name:String,registrationCode:String,register:Boolean)=action{app.agent.login(url,email,password,name,registrationCode,register);app.settings.put("offline_profile","false");app.settings.put("byok_deferred","false");app.ledger.changed()}
     fun byok(key:String)=action{app.agent.byok(key);app.agent.setAi(true);app.agent.sync();app.ledger.changed()}

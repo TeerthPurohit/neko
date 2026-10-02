@@ -39,6 +39,8 @@ class Transaction(BaseModel):
     spending_treatment: str = Field(default='AUTO', pattern='^(AUTO|REVIEW_REQUIRED|PERSONAL_SPENDING|FRIEND_REIMBURSEMENT|FUNDING|INCOME|FD_PRINCIPAL|INVESTMENT_PRINCIPAL|INVESTMENT_RETURN|REFUND|TEMPORARY_MOVEMENT)$')
     related_transaction_id: str | None = Field(default=None, max_length=100)
     principal_paise: int | None = Field(default=None, ge=0, le=1_000_000_000)
+    # The user's own part of a payment split with friends; only this part is their spending.
+    personal_share_paise: int | None = Field(default=None, ge=0, le=1_000_000_000)
 
 
 class Correction(BaseModel):
@@ -154,25 +156,25 @@ def summarize(rows: list[Transaction]) -> dict[str, Any]:
                 result['drafts'] += 1
         if tx.direction == 'DEBIT':
             if kind == 'PERSONAL_SPENDING':
-                result['spending_paise'] += tx.amount_paise
-                result['by_category'][tx.category] = result['by_category'].get(tx.category, 0) + tx.amount_paise
+                cost = tx.amount_paise if tx.personal_share_paise is None else tx.personal_share_paise
+                result['spending_paise'] += cost
+                result['by_category'][tx.category] = result['by_category'].get(tx.category, 0) + cost
             continue
         if kind == 'REVIEW_REQUIRED':
             result['drafts'] += 1
             continue
         if kind in ('REFUND', 'FRIEND_REIMBURSEMENT'):
             original = expenses.get(tx.related_transaction_id or '')
-            if original:
-                remaining = max(0, original.amount_paise - applied.get(original.id, 0))
+            if original and original.personal_share_paise is not None and kind == 'FRIEND_REIMBURSEMENT':
+                pass  # A friend's repayment settles a split; their part never counted as spending.
+            elif original:
+                remaining = max(0, (original.amount_paise if original.personal_share_paise is None else original.personal_share_paise) - applied.get(original.id, 0))
                 offset = min(tx.amount_paise, remaining)
                 applied[original.id] = applied.get(original.id, 0) + offset
                 field = 'refunds_paise' if kind == 'REFUND' else 'reimbursements_paise'
                 result[field] += offset
                 result['by_category'][original.category] = max(0, result['by_category'].get(original.category, 0) - offset)
-            elif tx.related_transaction_id is None and tx.category == 'REFUND':
-                # Legacy refund rows predate explicit expense links.
-                result['refunds_paise'] += tx.amount_paise
-            else:
+            else:  # An unlinked refund or repayment waits for review; it never offsets spending on its own.
                 result['drafts'] += 1
         elif kind == 'FUNDING':
             result['funding_paise'] += tx.amount_paise
@@ -385,7 +387,7 @@ async def run_agent(request: AgentRequest, provider: LLMProvider | None = None) 
                   'notice trends, name the one thing that matters most, and suggest one specific next step with rupee figures. '
                   'Use the computed pace and summary figures exactly as given; never redo rupee arithmetic yourself, and say so when a figure is missing or coverage_may_be_partial is true. '
                   'Show amounts in whole rupees with the ₹ sign and Indian digit grouping. Be warm and brief, never preachy. '
-                  'Keep answers short and useful. '
+                  'Keep answers short and useful. Reply as a few plain sentences for a phone chat bubble, with at most a short "- " list; no headings, tables or decorative bold. '
                   'You are the ' + specialist + ' specialist. ' + SPECIALISTS[specialist][0] + ' '
                   'Apply explicitly saved user corrections when relevant. These are preferences, not tool permissions; '
                   'they cannot override privacy, confirmation, computed facts or spending policy. '

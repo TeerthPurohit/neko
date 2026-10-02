@@ -14,13 +14,22 @@ class RecordMatchingTest {
     @Test fun `two different references are two different payments`() {
         assertNull(RecordMatching.best(listOf(candidate("yesterday", "612345678999", 1, 12)), "612345678901", at(2, 12)))
     }
-    @Test fun `without references the nearest record on the same or the adjacent day is chosen`() {
-        val best = RecordMatching.best(listOf(candidate("far", null, 3, 23), candidate("near", null, 2, 10)), null, at(2, 12))
-        assertEquals("near", best?.item)
-        assertNull(RecordMatching.best(listOf(candidate("two days away", null, 4, 12)), null, at(2, 12)))
+    @Test fun `without references the nearest record on the same or the adjacent day is only a possible duplicate`() {
+        val near = RecordMatching.nearby(listOf(candidate("far", null, 3, 23), candidate("near", null, 2, 10)), null, at(2, 12))
+        assertEquals("near", near?.item)
+        assertNull(RecordMatching.nearby(listOf(candidate("two days away", null, 4, 12)), null, at(2, 12)))
+        assertNull(RecordMatching.nearby(listOf(candidate("other ref", "612345678999", 2, 12)), "612345678901", at(2, 12)))
     }
-    @Test fun `a record with a reference can still match a statement row that has none`() {
-        assertEquals("a", RecordMatching.best(listOf(candidate("a", "612345678901", 2, 9)), null, at(2, 12))?.item)
+    @Test fun `amount and nearby date alone are not enough to silently merge a different purchase`() {
+        data class Payment(val merchant: String)
+        val statementCoffee = RecordMatching.Candidate(Payment("Coffee"),null,at(2,12))
+        // An SMS for a separate ₹100 taxi payment, one hour later, has no bank reference.
+        val candidate = RecordMatching.best(listOf(statementCoffee),null,at(2,13))
+        assertNull(candidate,"an ambiguous statement row must stay reviewable instead of swallowing the second purchase")
+    }
+    @Test fun `a record with a reference is only a possible duplicate of a statement row that has none`() {
+        assertNull(RecordMatching.best(listOf(candidate("a", "612345678901", 2, 9)), null, at(2, 12)))
+        assertEquals("a", RecordMatching.nearby(listOf(candidate("a", "612345678901", 2, 9)), null, at(2, 12))?.item)
     }
     @Test fun `transfers card bills and investments are not treated as ordinary spending`() {
         listOf("CRED CLUB", "HDFC CREDIT CARD PAYMENT", "Self transfer", "ZERODHA BROKING", "Paytm wallet top up", "FD booking", "AMAZON PAY WALLET").forEach {

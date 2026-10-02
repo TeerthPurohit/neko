@@ -27,10 +27,17 @@ import dev.neko.core.Transaction
         if(result[Manifest.permission.READ_SMS]==true){inboxGranted=true;model.scanInbox()}
     }
     var paying by rememberSaveable{mutableStateOf(false)}
+    // Splitting: [splitDays] opens the split flow (1 = today's payments). Each time the app comes to the front, Neko asks once about today's
+    // payments it has not asked about yet.
+    var splitDays by rememberSaveable{mutableStateOf(0)};var splitPrompt by rememberSaveable{mutableStateOf("")};var opened by remember{mutableStateOf(0)}
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_START){opened++}
+    LaunchedEffect(opened,state.loading){
+        if(!state.loading&&splitDays==0)splitPrompt=dev.neko.core.Splits.candidates(state.transactions,state.splitExpenses,java.time.LocalDate.now(dev.neko.core.Ledger.india)).filter{it.id !in state.splitAsked}.joinToString("\n"){it.id}
+    }
     // Saved with the dialog (rotation, process death) so a scanned merchant QR keeps its fields.
     val parsedSaver=androidx.compose.runtime.saveable.listSaver<dev.neko.core.UpiPay.Parsed?,String>(
-        save={p->if(p==null)emptyList() else listOf(p.vpa,p.name,p.amountPaise?.toString().orEmpty(),p.note,p.extras.entries.joinToString("\n"){"${it.key}\t${it.value}"})},
-        restore={l->if(l.size<5)null else dev.neko.core.UpiPay.Parsed(l[0],l[1],l[2].toLongOrNull(),l[3],l[4].lines().filter{it.isNotBlank()}.associate{line->val kv=line.split('\t',limit=2);kv[0] to kv.getOrElse(1){""}})})
+        save={p->if(p==null)emptyList() else listOf(p.vpa,p.name,p.amountPaise?.toString().orEmpty(),p.note,p.extras.entries.joinToString("\n"){"${it.key}\t${it.value}"},p.raw)},
+        restore={l->if(l.size<5)null else dev.neko.core.UpiPay.Parsed(l[0],l[1],l[2].toLongOrNull(),l[3],l[4].lines().filter{it.isNotBlank()}.associate{line->val kv=line.split('\t',limit=2);kv[0] to kv.getOrElse(1){""}},l.getOrElse(5){""})})
     var payPrefill by rememberSaveable(stateSaver=parsedSaver){mutableStateOf<dev.neko.core.UpiPay.Parsed?>(null)}
     // Opens Google's built-in QR scanner (no camera permission needed). [onResult] gets the payment from a UPI QR code, or null if the user cancelled or scanning is unavailable.
     val scanQr:((dev.neko.core.UpiPay.Parsed?)->Unit)->Unit={onResult->
@@ -74,22 +81,45 @@ import dev.neko.core.Transaction
                 "Ledger"->LedgerScreen(state,onAdd={adding=true},onTransaction={selectedId=it.id},onExport={export.launch("neko-ledger.csv")})
                 "Activity"->AgentScreen(state,model,onSettings={page="Settings"})
                 "Insights"->InsightsScreen(state,model)
-                "Splits"->SplitsScreen(state,model,onSettings={page="Settings"})
+                "Splits"->SplitsScreen(state,model,onSplitPayments={splitDays=60})
                 "Settings"->SettingsScreen(state,model,smsGranted,inboxGranted,onBack={page="Home"},onPermissions=smsPermissions,onImportStatement=pickStatement,onFirebase={firebase.launch(arrayOf("application/json","text/plain"))})
             }
         }
     }
-    if(paying)UpiPayDialog(payPrefill,onScan={scanQr{scanned->if(scanned!=null)payPrefill=scanned}},onDismiss={paying=false},onPay={vpa,name,paise,note,extras->
+    if(paying)UpiPayDialog(payPrefill,onScan={scanQr{scanned->if(scanned!=null)payPrefill=scanned}},onDismiss={paying=false},onPay={vpa,name,paise,note,extras,scanned->
         paying=false
-        model.beginUpi(vpa,name,paise,note,extras){link->
-            try{upi.launch(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(link)),"Pay with"))}
-            catch(_:Exception){model.note("No UPI app was found on this phone.")}
+        model.beginUpi(vpa,name,paise,note,extras,scanned){link->
+            try{
+                if(link!=null)upi.launch(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(link)),"Pay with"))
+                else {
+                    // Payments to a person: copy the UPI ID and open the user's UPI app, where they pay as usual. The bank SMS settles the record.
+                    context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(android.content.ClipData.newPlainText("UPI ID",vpa))
+                    val pm=context.packageManager
+                    val apps=pm.queryIntentActivities(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse("upi://pay")),0)
+                        .mapNotNull{pm.getLaunchIntentForPackage(it.activityInfo.packageName)}.distinctBy{it.`package`}
+                    if(apps.isEmpty())model.note("No UPI app was found on this phone.")
+                    else {
+                        model.note("Copied $vpa. Paste it in your UPI app and pay ${rupees(paise)}.")
+                        upi.launch(if(apps.size==1)apps.single() else android.content.Intent.createChooser(apps.first(),"Pay ${rupees(paise)} with").putExtra(android.content.Intent.EXTRA_INITIAL_INTENTS,apps.drop(1).toTypedArray()))
+                    }
+                }
+            } catch(_:Exception){model.note("No UPI app was found on this phone.")}
         }
     })
     statementFile?.let{file->StatementImportDialog(state.busy,onDismiss={statementFile=null},onImport={account,password,thisMonthOnly->
         model.importStatement(android.net.Uri.parse(file),account,password,thisMonthOnly){statementFile=null}
     })}
     state.statementResult?.let{result->StatementResultDialog(result,onConfirmSpending=model::confirmStatementSpending,onDismiss=model::dismissStatementResult)}
+    val askAbout=splitPrompt.split('\n').mapNotNull{id->state.transactions.find{it.id==id}}
+    if(askAbout.isNotEmpty()&&splitDays==0&&!paying&&state.upiPromptId==null)AlertDialog(onDismissRequest={},title={Text("Any payments to split?")},
+        text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){
+            Text("You made ${if(askAbout.size==1)"a payment" else "${askAbout.size} payments"} today. Do any of them need splitting?")
+            askAbout.take(4).forEach{Text("${rupees(it.amountPaise)} · ${it.merchant}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            if(askAbout.size>4)Text("and ${askAbout.size-4} more",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        }},
+        confirmButton={TextButton({splitPrompt="";splitDays=1}){Text("Yes, split")}},
+        dismissButton={TextButton({model.markSplitAsked(askAbout.map{it.id});splitPrompt=""}){Text("No, all mine")}})
+    if(splitDays>0)SplitPaymentsFlow(state,model,splitDays){offered->model.markSplitAsked(offered);splitDays=0}
     val unsettled=state.upiPromptId?.let{id->state.transactions.find{it.id==id&&it.status==dev.neko.core.PaymentStatus.PENDING}}
     if(unsettled!=null)AlertDialog(onDismissRequest={model.resolveUpi(null)},title={Text("Did the payment go through?")},
         text={Text("${rupees(unsettled.amountPaise)} to ${unsettled.merchant}. If you're not sure, Neko will settle it when your bank's SMS arrives.")},

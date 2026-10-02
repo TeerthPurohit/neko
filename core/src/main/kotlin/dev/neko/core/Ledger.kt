@@ -46,8 +46,12 @@ data class Transaction(
     val spendingTreatment: SpendingTreatment = SpendingTreatment.AUTO,
     val relatedTransactionId: String? = null,
     val principalPaise: Long? = null,
+    /** The user's own part of a payment they split with others; only this part counts as their spending. Null when not split. */
+    val personalSharePaise: Long? = null,
 ) {
-    init { require(amountPaise > 0); require(confidence in 0.0..1.0); require(principalPaise == null || principalPaise in 0..amountPaise) }
+    init { require(amountPaise > 0); require(confidence in 0.0..1.0); require(principalPaise == null || principalPaise in 0..amountPaise); require(personalSharePaise == null || personalSharePaise in 0..amountPaise) }
+    /** What this payment costs the user: their share when it is split, else the whole amount. */
+    val spendingPaise: Long get() = personalSharePaise ?: amountPaise
     val countsInReports: Boolean get() = status == PaymentStatus.POSTED && review == ReviewStatus.CONFIRMED && transferId == null
 }
 
@@ -76,10 +80,22 @@ object Money {
     fun parse(text: String): Long = BigDecimal(text.replace(",", "").trim())
         .setScale(2, RoundingMode.UNNECESSARY).movePointRight(2).longValueExact().also { require(it > 0) }
     fun decimal(paise: Long): String = BigDecimal.valueOf(paise, 2).toPlainString()
+    /** "₹1,23,456" (paise shown only when present), with Indian digit grouping. */
+    fun rupees(paise: Long): String = java.text.NumberFormat.getCurrencyInstance(java.util.Locale.forLanguageTag("en-IN"))
+        .apply { maximumFractionDigits = if (paise % 100 == 0L) 0 else 2 }.format(paise / 100.0)
 }
 
 object Ledger {
     val india: ZoneId = ZoneId.of("Asia/Kolkata")
+    /**
+     * Accounts with counted entries in [month] that no imported statement has covered ([reconciled] holds "account|yyyy-MM").
+     * Until this is empty the month's total comes from SMS and manual entries alone and is not final.
+     */
+    // ponytail: a statement touching the month counts as covering all of it; store statement periods if partial statements matter.
+    fun unreconciledAccounts(transactions: List<Transaction>, month: YearMonth, reconciled: Set<String>): Set<String> =
+        transactions.filter { it.countsInReports && YearMonth.from(Instant.ofEpochMilli(it.occurredAt).atZone(india)) == month && "${it.account}|$month" !in reconciled }
+            .mapTo(sortedSetOf()) { it.account }
+
     fun report(transactions: List<Transaction>, month: YearMonth): MonthlyReport {
         fun monthOf(tx: Transaction) = YearMonth.from(Instant.ofEpochMilli(tx.occurredAt).atZone(india))
         val booked = transactions.filter { it.countsInReports }
@@ -91,35 +107,37 @@ object Ledger {
         }
         val spendingDebits = booked.filter { it.direction == Direction.DEBIT && SpendingPolicy.treatment(it) == SpendingTreatment.PERSONAL_SPENDING }
         val expenses = spendingDebits.associateBy { it.id }
-        val gross = spendingDebits.filter { monthOf(it) == month }.sumOf { it.amountPaise }
+        // A split payment counts only the user's share; what friends owe is tracked in Splits, not as spending.
+        val gross = spendingDebits.filter { monthOf(it) == month }.sumOf { it.spendingPaise }
         val categories = spendingDebits.filter { monthOf(it) == month }.groupBy { it.category }
-            .mapValues { (_, items) -> items.sumOf { it.amountPaise } }.toMutableMap()
+            .mapValues { (_, items) -> items.sumOf { it.spendingPaise } }.toMutableMap()
 
         var refunds = 0L
         var reimbursements = 0L
-        var legacyUnlinkedRefunds = 0L
+        var unlinkedOffsets = 0
         val adjusted = mutableMapOf<String, Long>()
         booked.filter { it.direction == Direction.CREDIT }.sortedBy { it.occurredAt }.forEach { credit ->
             when (SpendingPolicy.treatment(credit)) {
                 SpendingTreatment.REFUND, SpendingTreatment.FRIEND_REIMBURSEMENT -> {
                     val original = credit.relatedTransactionId?.let(expenses::get)
-                    if (original != null) {
-                        val remaining = (original.amountPaise - (adjusted[original.id] ?: 0L)).coerceAtLeast(0)
+                    // A friend's repayment of a split payment settles the split; their part was never counted as spending.
+                    if (original != null && original.personalSharePaise != null && SpendingPolicy.treatment(credit) == SpendingTreatment.FRIEND_REIMBURSEMENT) Unit
+                    else if (original != null) {
+                        val remaining = (original.spendingPaise - (adjusted[original.id] ?: 0L)).coerceAtLeast(0)
                         val applied = minOf(credit.amountPaise, remaining)
                         adjusted[original.id] = (adjusted[original.id] ?: 0L) + applied
                         if (monthOf(original) == month) {
                             if (SpendingPolicy.treatment(credit) == SpendingTreatment.REFUND) refunds += applied else reimbursements += applied
                             categories[original.category] = (categories[original.category] ?: 0L) - applied
                         }
-                    } else if (credit.relatedTransactionId == null && credit.category == Category.REFUND && monthOf(credit) == month) {
-                        // Keep old unlinked refund entries compatible; new entries require an expense link.
-                        legacyUnlinkedRefunds += credit.amountPaise
+                    } else if (monthOf(credit) == month) {
+                        // A refund or repayment offsets only the expense it is linked to; until then it waits for review.
+                        unlinkedOffsets++
                     }
                 }
                 else -> Unit
             }
         }
-        refunds += legacyUnlinkedRefunds
         val netCategories = categories.mapValues { (_, amount) -> amount.coerceAtLeast(0) }.filterValues { it > 0 }
         val incomes = booked.filter { it.direction == Direction.CREDIT }.sumOf { tx ->
             when (SpendingPolicy.treatment(tx)) {
@@ -135,7 +153,7 @@ object Ledger {
         val excludedWithBrokenLinks = booked.count { monthOf(it) == month && SpendingPolicy.treatment(it) == SpendingTreatment.TEMPORARY_MOVEMENT && it.id !in temporaryIds }
         return MonthlyReport(
             gross, incomes, refunds, netCategories,
-            transactions.count { monthOf(it) == month && it.review == ReviewStatus.DRAFT } + excludedWithBrokenLinks + booked.count { monthOf(it) == month && SpendingPolicy.treatment(it) == SpendingTreatment.REVIEW_REQUIRED },
+            transactions.count { monthOf(it) == month && it.review == ReviewStatus.DRAFT } + excludedWithBrokenLinks + booked.count { monthOf(it) == month && SpendingPolicy.treatment(it) == SpendingTreatment.REVIEW_REQUIRED } + unlinkedOffsets,
             reimbursements, funding, gains,
         )
     }

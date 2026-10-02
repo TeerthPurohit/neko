@@ -1,5 +1,5 @@
 import { ApiError, type Env } from './types';
-import { choice, text } from './validation';
+import { choice, rejectSensitive, text } from './validation';
 
 export const agentScopes = ['all','classification','ledger','budget','summary','followup','chat'] as const;
 export interface Correction { id:string; scope:string; behavior:string; correction:string; created_at:number }
@@ -11,6 +11,7 @@ export async function corrections(env:Env,userId:string,scope?:string):Promise<C
 
 export async function saveCorrection(env:Env,userId:string,data:Record<string,unknown>):Promise<string> {
   const scope=choice(data.scope??'all',agentScopes),behavior=text(data.behavior??'User explicitly corrected future behavior',500),correction=text(data.correction,1000);
+  rejectSensitive(behavior+' '+correction);
   const id=crypto.randomUUID();
   // Serialize saves for this account; the next statement gets a fresh snapshot
   // after taking the row lock, so concurrent requests cannot exceed the limit.

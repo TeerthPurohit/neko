@@ -78,9 +78,9 @@ object Spreadsheets {
         return lines.joinToString("\n")
     }
 
-    /** Whole numbers stay whole (dates are serial numbers); fractions are rounded to paise so 98765.50000000001 reads as 98765.50. */
+    /** Whole numbers stay whole (dates are serial numbers); fractions are rounded half up to paise from their shortest decimal form, so 98765.50000000001 reads as 98765.50 and 1.005 as 1.01. */
     fun cleanNumber(value: Double): String =
-        if (value.isNaN() || value.isInfinite()) "" else if (value == Math.rint(value) && abs(value) < 1e15) value.toLong().toString() else BigDecimal(value).setScale(2, RoundingMode.HALF_UP).toPlainString()
+        if (value.isNaN() || value.isInfinite()) "" else if (value == Math.rint(value) && abs(value) < 1e15) value.toLong().toString() else BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).toPlainString()
 
     fun csvLine(cells: List<String>): String = cells.joinToString(",") { raw ->
         val cell = raw.replace('\r', ' ').replace('\n', ' ')

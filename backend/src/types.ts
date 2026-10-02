@@ -20,7 +20,7 @@ export interface User { id: string; name: string; ai_enabled: number; model: str
 export interface Tx {
   id: string; occurred_at: number; amount_paise: number; direction: 'DEBIT' | 'CREDIT'; category: string;
   merchant: string; status: string; review: string; account_alias: string; transfer_id: string | null; updated_at: number;
-  spending_treatment?: string; related_transaction_id?: string | null; principal_paise?: number | null;
+  spending_treatment?: string; related_transaction_id?: string | null; principal_paise?: number | null; personal_share_paise?: number | null;
 }
 export interface Task { id: string; user_id: string; kind: string; payload: string; status: string; attempts: number; due_at: number; lease_until: number }
 export const categories = ['FOOD','GROCERIES','TRANSPORT','SHOPPING','BILLS','HEALTH','ENTERTAINMENT','RENT','INCOME','REFUND','TRANSFER','OTHER'] as const;

@@ -10,7 +10,10 @@ object Budgeting {
 
     /** Turns typed text such as "₹ 25,000" or "Rs. 1,200.50" into paise; null when it is not a positive amount within the limit. */
     fun parseRupees(text: String): Long? {
-        val cleaned = text.trim().replace(Regex("^(?:₹|rs\\.?|inr)\\s*", RegexOption.IGNORE_CASE), "").replace(",", "").trim()
+        val typed = text.trim().replace(Regex("^(?:₹|rs\\.?|inr)\\s*", RegexOption.IGNORE_CASE), "").trim()
+        // Commas must group digits (Indian "1,23,456" or Western "123,456"); "1,2,3" is a typo, not ₹123.
+        if (typed.contains(',') && !Regex("(?:\\d{1,2}(?:,\\d{2})*,\\d{3}|\\d{1,3}(?:,\\d{3})+)(\\.\\d{1,2})?").matches(typed)) return null
+        val cleaned = typed.replace(",", "")
         if (!Regex("\\d{1,10}(\\.\\d{1,2})?").matches(cleaned)) return null
         val paise = try { Money.parse(cleaned) } catch (_: Exception) { return null }
         return paise.takeIf { it in 1..MAX_PAISE }

@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.work.*
 import dev.neko.app.NekoApplication
 import dev.neko.app.agent.AgentWork
-import dev.neko.app.agent.Notifications
+import dev.neko.app.agent.Watch
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
@@ -18,13 +18,12 @@ class SmsCatchUpWorker(context: Context, params: WorkerParameters) : CoroutineWo
             // First run looks back a week; later runs overlap by an hour so a slow delivery is never skipped.
             val since = app.settings.get("last_sms_scan", "0").toLong().let { if (it == 0L) now - 7 * 86_400_000L else it - 3_600_000L }
             val changesBefore = app.ledger.changes.value
-            val found = SmsInbox.importSince(app, since)
-            app.settings.put("last_sms_scan", now.toString())
-            if (found.isNotEmpty()) {
-                val latest = found.last()
-                Notifications.show(applicationContext, "transaction:" + latest.id, if (found.size == 1) "A transaction is ready to review" else "${found.size} transactions are ready to review",
-                    "Neko noted down your bank SMS. Confirm the details.", latest.id)
-            }
+            val scan = SmsInbox.importSince(app, since)
+            val found = scan.found
+            // When the inbox held more than one run can read, the next run resumes where this one stopped (the hour overlap is added back above).
+            app.settings.put("last_sms_scan", (scan.scannedThrough?.let { it + 3_600_000L } ?: now).toString())
+            if (scan.scannedThrough != null) runNow(applicationContext)
+            Watch.afterCapture(app, found)
             // A notice can change the ledger without being new (merged into a payment you made, or linked as a transfer), and the agent should hear about that too.
             if (found.isNotEmpty() || app.ledger.changes.value != changesBefore) AgentWork.syncNow(applicationContext)
             Result.success()
