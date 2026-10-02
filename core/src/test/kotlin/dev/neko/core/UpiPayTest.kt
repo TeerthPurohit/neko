@@ -22,6 +22,13 @@ class UpiPayTest {
     @Test fun `rejects links that are not safe upi payments`() {
         listOf("https://example.com/pay?pa=a@ybl", "upi://mandate?pa=ab@ybl", "upi://pay?pn=NoId", "upi://pay?pa=bad", "upi://pay?pa=ab@ybl&cu=USD", "hello").forEach { assertNull(UpiPay.parseLink(it), it) }
     }
+    @Test fun `only an exact upi pay path is accepted and long signatures survive`() {
+        assertNull(UpiPay.parseLink("upi://payXYZ?pa=ab@ybl"))
+        val signature = "A".repeat(400)
+        val parsed = UpiPay.parseLink("upi://pay?pa=shop@ybl&pn=Shop&am=10.00&sign=$signature")!!
+        assertEquals(signature, parsed.extras["sign"])
+        assertTrue(UpiPay.link("shop@ybl", "Shop", 1000, "", parsed.extras).endsWith("&sign=$signature"), "a truncated signature would be rejected by the payee's bank")
+    }
     @Test fun `a scanned code keeps its merchant fields when the link is rebuilt`() {
         assertEquals("upi://pay?pa=shop%40ybl&pn=Shop&am=99.50&cu=INR&mc=5411&tr=T9", UpiPay.link("shop@ybl", "Shop", 9_950, "", mapOf("mc" to "5411", "tr" to "T9")))
     }

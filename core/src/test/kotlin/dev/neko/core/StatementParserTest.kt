@@ -101,6 +101,11 @@ Page 1 of 1
         assertEquals(LocalDate.of(2026, 10, 2), rows[0].date); assertEquals(123_450L, rows[0].amountPaise); assertEquals(Direction.DEBIT, rows[0].direction)
         assertEquals(Direction.CREDIT, rows[1].direction); assertEquals("ACME CORP", rows[1].merchant)
     }
+    @Test fun `a dated footer followed by totals never becomes a transaction`() {
+        val text = "Opening Balance 10,000.00\n01/10/2026 UPI/612345678901/CAFE/ybl 90.00 9,910.00\n02/10/2026 Statement generated on\nTotal Debits 5,000.00 Total Credits 0.00\nClosing Balance 9,910.00"
+        val parsed = StatementParser.parse(text)
+        assertEquals(1, parsed.rows.size); assertEquals(9_000L, parsed.rows.single().amountPaise)
+    }
     @Test fun `a pdf row whose direction cannot be proven is reported not guessed`() {
         val parsed = StatementParser.parse("02/10/2026 MYSTERY ENTRY 777.00")
         assertEquals(0, parsed.rows.size); assertEquals(1, parsed.skipped)

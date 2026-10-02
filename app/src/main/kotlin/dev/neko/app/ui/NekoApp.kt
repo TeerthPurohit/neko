@@ -27,7 +27,11 @@ import dev.neko.core.Transaction
         if(result[Manifest.permission.READ_SMS]==true){inboxGranted=true;model.scanInbox()}
     }
     var paying by rememberSaveable{mutableStateOf(false)}
-    var payPrefill by remember{mutableStateOf<dev.neko.core.UpiPay.Parsed?>(null)}
+    // Saved with the dialog (rotation, process death) so a scanned merchant QR keeps its fields.
+    val parsedSaver=androidx.compose.runtime.saveable.listSaver<dev.neko.core.UpiPay.Parsed?,String>(
+        save={p->if(p==null)emptyList() else listOf(p.vpa,p.name,p.amountPaise?.toString().orEmpty(),p.note,p.extras.entries.joinToString("\n"){"${it.key}\t${it.value}"})},
+        restore={l->if(l.size<5)null else dev.neko.core.UpiPay.Parsed(l[0],l[1],l[2].toLongOrNull(),l[3],l[4].lines().filter{it.isNotBlank()}.associate{line->val kv=line.split('\t',limit=2);kv[0] to kv.getOrElse(1){""}})})
+    var payPrefill by rememberSaveable(stateSaver=parsedSaver){mutableStateOf<dev.neko.core.UpiPay.Parsed?>(null)}
     // Opens Google's built-in QR scanner (no camera permission needed). [onResult] gets the payment from a UPI QR code, or null if the user cancelled or scanning is unavailable.
     val scanQr:((dev.neko.core.UpiPay.Parsed?)->Unit)->Unit={onResult->
         try {

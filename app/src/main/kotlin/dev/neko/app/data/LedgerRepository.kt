@@ -204,21 +204,31 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
             val a=db.get(aId)?:error("Transaction missing");val b=db.get(bId)?:error("Transaction missing")
             // The user is confirming these two entries, so the accounts do not have to be marked as theirs beforehand; confirming marks them.
             require(a.id!=b.id&&a.direction!=b.direction&&a.account!=b.account&&a.amountPaise==b.amountPaise) { "A transfer needs one payment out and one payment in, for the same amount, in two different accounts." }
-            require(a.status!=PaymentStatus.FAILED&&b.status!=PaymentStatus.FAILED&&a.transferId==null&&b.transferId==null) { "One of these is failed or already part of a transfer." }
+            require(a.status==PaymentStatus.POSTED&&b.status==PaymentStatus.POSTED&&a.transferId==null&&b.transferId==null) { "Both payments must be completed and not already part of a transfer." }
             require(a.relatedTransactionId==null&&b.relatedTransactionId==null) { "Unlink the existing movement relationship first." }
+            requireNoOtherLinks(a);requireNoOtherLinks(b)
             linkTransfer(a,b)
             database.setTransactionSuccessful();changed()
         } finally { database.endTransaction() }
     }
+    /** A refund or reimbursement points at the expense it repays; turning that expense into a transfer would leave those links dangling. A reciprocal temporary-movement partner is fine (it is released). */
+    private fun requireNoOtherLinks(tx: Transaction) {
+        val blockers=db.transactions().filter { it.relatedTransactionId==tx.id&&tx.relatedTransactionId!=it.id }
+        require(blockers.isEmpty()) { "Other entries (a refund or reimbursement) are linked to this one. Unlink them first." }
+    }
     /** Marks entries as one transfer between the user's own accounts: out of spending and income, and both accounts remembered as theirs. */
     private fun linkTransfer(vararg legs: Transaction) {
         val pair=java.util.UUID.randomUUID().toString();val now=System.currentTimeMillis()
-        legs.forEach { db.save(it.copy(transferId=pair,category=Category.TRANSFER,spendingTreatment=SpendingTreatment.AUTO,relatedTransactionId=null,review=ReviewStatus.CONFIRMED,updatedAt=now,revision=it.revision+1));db.setOwned(it.account,true) }
+        legs.forEach { db.save(it.copy(transferId=pair,category=Category.TRANSFER,spendingTreatment=SpendingTreatment.AUTO,relatedTransactionId=null,review=ReviewStatus.CONFIRMED,updatedAt=now,revision=it.revision+1))
+            // Only a real bank account is remembered as the user's; "Cash" or the "UPI app" placeholder must not make every such entry look owned.
+            if(Transfers.isIdentified(it.account))db.setOwned(it.account,true) }
     }
+    private fun unlinkedIds(): Set<String> = settings.get("unlinked_transfers").split(',').filter { it.isNotBlank() }.toSet()
+    private fun rememberUnlinked(ids: List<String>) = settings.put("unlinked_transfers",(unlinkedIds().toList()+ids).takeLast(300).joinToString(","))
     /** Links the obvious own-account transfers (see [Transfers.autoPairs]) and returns the ids it linked. */
     private fun autoLinkTransfers(): Set<String> {
         val ids=HashSet<String>()
-        for((out,into) in Transfers.autoPairs(db.transactions(),settings.get("user_name"))) { linkTransfer(out,into);ids+=out.id;ids+=into.id }
+        for((out,into) in Transfers.autoPairs(db.transactions(),settings.get("user_name"),db.ownAccounts(),unlinkedIds())) { linkTransfer(out,into);ids+=out.id;ids+=into.id }
         return ids
     }
     /** The user says this entry is a transfer between their own accounts. Pairs it with the matching entry when one exists; otherwise it stands alone, excluded from spending and income. */
@@ -227,6 +237,8 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
         try {
             val tx=db.get(id)?:error("Transaction no longer exists")
             require(tx.transferId==null) { "This is already marked as a transfer." }
+            require(tx.status==PaymentStatus.POSTED) { "Only a completed payment can be marked as a transfer. Try again once it has gone through." }
+            requireNoOtherLinks(tx)
             // A movement link would otherwise be left dangling on its partner.
             tx.relatedTransactionId?.let(db::get)?.takeIf { it.relatedTransactionId==tx.id }?.let { db.save(it.copy(relatedTransactionId=null,spendingTreatment=SpendingTreatment.AUTO,updatedAt=System.currentTimeMillis(),revision=it.revision+1)) }
             val other=Transfers.counterpart(tx.copy(relatedTransactionId=null),db.transactions())
@@ -237,6 +249,9 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
     suspend fun unmatchTransfer(id: String) = withContext(Dispatchers.IO) {
         val pair=db.get(id)?.transferId?:return@withContext
         val database=db.writableDatabase;database.beginTransaction()
-        try { db.transactions().filter { it.transferId==pair }.forEach { db.save(it.copy(transferId=null,category=Category.OTHER,review=ReviewStatus.DRAFT,updatedAt=System.currentTimeMillis(),revision=it.revision+1)) };database.setTransactionSuccessful();changed() }finally{database.endTransaction()}
+        try {
+            // Remember the user's decision so automatic linking never ties these entries together again.
+            rememberUnlinked(db.transactions().filter { it.transferId==pair }.map { it.id })
+            db.transactions().filter { it.transferId==pair }.forEach { db.save(it.copy(transferId=null,category=Category.OTHER,review=ReviewStatus.DRAFT,updatedAt=System.currentTimeMillis(),revision=it.revision+1)) };database.setTransactionSuccessful();changed() }finally{database.endTransaction()}
     }
 }

@@ -17,6 +17,16 @@ import dev.neko.core.Money
 import dev.neko.core.UpiPay
 
 /**
+ * Merchant fields from a scanned QR code are kept only while the UPI ID is the scanned one. The `sign` field is a signature over the scanned amount,
+ * name and note, so it is dropped as soon as any of those is changed.
+ */
+internal fun scannedFields(prefill: UpiPay.Parsed?, vpa: String, name: String, paise: Long?, note: String): Map<String, String> {
+    if (prefill == null || vpa != prefill.vpa) return emptyMap()
+    val edited = name != prefill.name || note != prefill.note || (prefill.amountPaise != null && paise != prefill.amountPaise)
+    return if (edited) prefill.extras - "sign" else prefill.extras
+}
+
+/**
  * Pay someone from Neko: scan their UPI QR code (or type the details), the payment is saved first, then Google Pay, PhonePe or any other
  * UPI app opens with the details filled in. Nothing is counted in reports until the UPI app (or your bank's SMS) confirms it.
  * [prefill] comes from a scanned QR code; its merchant fields are kept only while the UPI ID is unchanged.
@@ -46,7 +56,7 @@ import dev.neko.core.UpiPay
                 Text("Neko saves this payment now and updates it when it goes through.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { TextButton({ tried = true; if (vpaOk && paise != null) onPay(vpa, name, paise, note, if (prefill != null && vpa == prefill.vpa) prefill.extras else emptyMap()) }) { Text("Open UPI app") } },
+        confirmButton = { TextButton({ tried = true; if (vpaOk && paise != null) onPay(vpa, name, paise, note, scannedFields(prefill, vpa, name, paise, note)) }) { Text("Open UPI app") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
     )
 }

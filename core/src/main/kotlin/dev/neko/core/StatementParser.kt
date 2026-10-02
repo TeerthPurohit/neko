@@ -170,7 +170,10 @@ object StatementParser {
             val date = start?.let { parseDate(it.groupValues[1]) }
             if (start == null || date == null) {
                 val w = waiting
-                if (w != null) {
+                if (w != null && noiseLine.containsMatchIn(line)) {
+                    // A footer or totals line means the dated line above it was not a transaction row after all.
+                    skipped++; waiting = null
+                } else if (w != null) {
                     // Some statements wrap a row so the amounts land on a later line; collect up to three more lines for it.
                     w.text.append(' ').append(line.trim()); w.lines++
                     if (add(w.date, w.text.toString())) waiting = null else if (w.lines >= 3) { skipped++; waiting = null }

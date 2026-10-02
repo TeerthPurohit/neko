@@ -23,7 +23,7 @@ object UpiPay {
         val payee = clean(name, 50).ifEmpty { vpa.trim() }
         val message = clean(note, 80)
         return "upi://pay?pa=${encode(vpa.trim())}&pn=${encode(payee)}&am=${Money.decimal(amountPaise)}&cu=INR" + (if (message.isEmpty()) "" else "&tn=${encode(message)}") +
-            extras.filterKeys { it in merchantFields }.entries.joinToString("") { "&${it.key}=${encode(clean(it.value, 200))}" }
+            extras.filterKeys { it in merchantFields }.entries.joinToString("") { "&${it.key}=${encode(clean(it.value, if (it.key == "sign" || it.key == "url") 2000 else 200))}" }
     }
 
     /** A payment read from a scanned QR code; [amountPaise] is null for an open-amount code, which the user fills in. */
@@ -32,7 +32,7 @@ object UpiPay {
     /** Reads a `upi://pay` link from a QR code. Anything else (other schemes, mandates, other currencies, invalid IDs) is rejected. */
     fun parseLink(raw: String): Parsed? {
         val text = raw.trim()
-        if (!text.startsWith("upi://pay", ignoreCase = true)) return null
+        if (!text.startsWith("upi://pay", ignoreCase = true) || text.length > 9 && text[9] != '?' && text[9] != '/') return null
         val query = text.substringAfter('?', "")
         if (query.isEmpty()) return null
         val params = try {
