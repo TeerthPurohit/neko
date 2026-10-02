@@ -21,7 +21,12 @@ import dev.neko.core.Transaction
     var page by rememberSaveable{mutableStateOf("Home")};var selectedId by rememberSaveable{mutableStateOf<String?>(null)};var adding by rememberSaveable{mutableStateOf(false)}
     val context=LocalContext.current
     var smsGranted by remember{mutableStateOf(context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED)}
-    val permissions=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){result->smsGranted=result[Manifest.permission.RECEIVE_SMS]?:smsGranted}
+    var inboxGranted by remember{mutableStateOf(context.checkSelfPermission(Manifest.permission.READ_SMS)==PackageManager.PERMISSION_GRANTED)}
+    val permissions=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){result->
+        smsGranted=result[Manifest.permission.RECEIVE_SMS]?:smsGranted
+        if(result[Manifest.permission.READ_SMS]==true){inboxGranted=true;model.scanInbox()}
+    }
+    val smsPermissions={permissions.launch(if(Build.VERSION.SDK_INT>=33)arrayOf(Manifest.permission.RECEIVE_SMS,Manifest.permission.READ_SMS,Manifest.permission.POST_NOTIFICATIONS)else arrayOf(Manifest.permission.RECEIVE_SMS,Manifest.permission.READ_SMS))}
     val export=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")){uri->if(uri!=null)model.action { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO){context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use{it.write(dev.neko.core.Ledger.csv(state.transactions))}};model.note("Ledger exported.") }}
     val firebase=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null){try{val config=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use{it.readText()}?:error("Could not read file");model.firebase(config)}catch(_:Exception){model.note("Could not read Firebase configuration.")}}}
     LaunchedEffect(requestedTransaction,requestedAgent,state.loading){
@@ -39,12 +44,12 @@ import dev.neko.core.Transaction
             if(state.busy)LinearProgressIndicator(Modifier.fillMaxWidth(),color=MaterialTheme.colorScheme.primary)
             if(state.loading)Box(Modifier.fillMaxSize(),contentAlignment=androidx.compose.ui.Alignment.Center){CircularProgressIndicator()}
             else when(page){
-                "Home"->HomeScreen(state,smsGranted,onSettings={page="Settings"},onLedger={page="Ledger"},onSend=model::send,onPermissions={permissions.launch(if(Build.VERSION.SDK_INT>=33)arrayOf(Manifest.permission.RECEIVE_SMS,Manifest.permission.POST_NOTIFICATIONS)else arrayOf(Manifest.permission.RECEIVE_SMS))})
+                "Home"->HomeScreen(state,smsGranted,onSettings={page="Settings"},onLedger={page="Ledger"},onSend=model::send,onPermissions=smsPermissions)
                 "Ledger"->LedgerScreen(state,onAdd={adding=true},onTransaction={selectedId=it.id},onExport={export.launch("neko-ledger.csv")})
                 "Activity"->AgentScreen(state,model,onSettings={page="Settings"})
                 "Insights"->InsightsScreen(state,model)
                 "Splits"->SplitsScreen(state,model,onSettings={page="Settings"})
-                "Settings"->SettingsScreen(state,model,smsGranted,onBack={page="Home"},onPermissions={permissions.launch(if(Build.VERSION.SDK_INT>=33)arrayOf(Manifest.permission.RECEIVE_SMS,Manifest.permission.POST_NOTIFICATIONS)else arrayOf(Manifest.permission.RECEIVE_SMS))},onFirebase={firebase.launch(arrayOf("application/json","text/plain"))})
+                "Settings"->SettingsScreen(state,model,smsGranted,inboxGranted,onBack={page="Home"},onPermissions=smsPermissions,onFirebase={firebase.launch(arrayOf("application/json","text/plain"))})
             }
         }
     }

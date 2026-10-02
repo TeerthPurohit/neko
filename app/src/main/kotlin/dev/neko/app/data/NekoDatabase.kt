@@ -50,5 +50,6 @@ class NekoDatabase(context: Context): SQLiteOpenHelper(context,"neko.db",null,1)
     fun saveActivity(j: JSONObject) { writableDatabase.insertWithOnConflict("activity",null,ContentValues().apply { put("id",j.getString("id"));put("created_at",j.getLong("created_at"));put("data",j.toString()) },SQLiteDatabase.CONFLICT_REPLACE) }
     fun activity(): List<JSONObject> = readableDatabase.rawQuery("SELECT data FROM activity ORDER BY created_at DESC LIMIT 100",null).use { c -> buildList { while(c.moveToNext())add(JSONObject(c.getString(0))) } }
     fun addChat(role: String, message: String, id: String = java.util.UUID.randomUUID().toString()) { writableDatabase.insertWithOnConflict("chat",null,ContentValues().apply { put("id",id);put("created_at",System.currentTimeMillis());put("role",role);put("message",message) },SQLiteDatabase.CONFLICT_IGNORE) }
+    fun hasChat(id: String): Boolean = readableDatabase.rawQuery("SELECT 1 FROM chat WHERE id=? LIMIT 1",arrayOf(id)).use { it.moveToFirst() }
     fun chat(): List<Pair<String,String>> = readableDatabase.rawQuery("SELECT role,message FROM chat ORDER BY created_at LIMIT 200",null).use { c -> buildList { while(c.moveToNext())add(c.getString(0) to c.getString(1)) } }
 }

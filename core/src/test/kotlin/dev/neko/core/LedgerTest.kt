@@ -13,6 +13,18 @@ class LedgerTest {
             assertEquals(ReviewStatus.DRAFT, tx.review); assertEquals("612345678901", tx.reference)
         }
     }
+    @Test fun `trai suffixed sender ids from real bank headers are accepted`() {
+        // Since 2021 Indian operators append a category suffix (-S/-T/-P/-G) to registered headers.
+        listOf("JD-ICICIT-S" to "ICICI", "VM-ICICIB-T" to "ICICI", "AD-IDFCFB-S" to "IDFC FIRST", "AX-AUBANK-S" to "AU", "JM-HDFCBK-S" to "HDFC", "VK-SBIUPI-S" to "SBI", "CP-AXISBK-S" to "Axis", "BZ-KOTAKB-T" to "Kotak").forEach { (sender, bank) ->
+            val tx = SmsParser().parse(BankSms(sender, "Rs.250.00 debited from A/c XX1234 to ZOMATO on 01-10-26 via UPI Ref 612345678901.", now))
+            assertNotNull(tx, "sender $sender was dropped"); assertEquals("$bank · 1234", tx.account)
+        }
+    }
+    @Test fun `lookalike senders are still rejected`() {
+        listOf("FRIEND", "JD-XICICIBX-S", "9876543210", "+919876543210", "JD-ICICIBANKS", "JD-PROMO-S").forEach { sender ->
+            assertNull(SmsParser().parse(BankSms(sender, "Rs.250.00 debited from A/c XX1234 to ZOMATO", now)), "sender $sender must not parse")
+        }
+    }
     @Test fun `otp and unrelated sender never become transactions`() {
         assertNull(SmsParser().parse(BankSms("VM-ICICIB", "OTP 123456 for payment of INR 100.00", now)))
         assertNull(SmsParser().parse(BankSms("FRIEND", "INR 100 debited from A/c XX1234", now)))

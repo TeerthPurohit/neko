@@ -55,8 +55,28 @@ class AgentRepository(private val ledger: LedgerRepository, private val network:
     suspend fun chat(message:String) {
         require(settings.aiEnabled){ "Enable cloud AI in Settings to talk with Neko" }
         sync()
-        api("chat","POST",JSONObject().put("message",message))
+        val task=api("chat","POST",JSONObject().put("message",message))
         withContext(Dispatchers.IO){ledger.db.addChat("user",message);ledger.changed()}
+        awaitReply(task.optString("task_id"))
+    }
+    /**
+     * The backend answers asynchronously: POST /chat only queues the task. Periodic polling was removed, so without
+     * waiting here the reply would only appear if a push notification happened to arrive.
+     */
+    private suspend fun awaitReply(taskId:String,timeoutMs:Long=100_000) {
+        if(taskId.isBlank())return
+        val deadline=System.currentTimeMillis()+timeoutMs
+        while(System.currentTimeMillis()<deadline) {
+            val activity=try{sync()}catch(error:java.io.IOException){null} // cold start or flaky network: keep waiting
+            if(withContext(Dispatchers.IO){ledger.db.hasChat("result:$taskId")})return
+            val list=activity?.getJSONArray("activity")
+            if(list!=null)for(i in 0 until list.length()) {
+                val item=list.getJSONObject(i)
+                if(item.getString("id")=="failed:$taskId")throw java.io.IOException(item.getString("body"))
+            }
+            kotlinx.coroutines.delay(2_000)
+        }
+        throw java.io.IOException("Neko is still working on this. The reply will appear here when it is ready.")
     }
     suspend fun addGoal(title:String,hour:Int) { api("goals","POST",JSONObject().put("title",title).put("hour",hour));sync() }
     suspend fun pauseGoal(id:String,enabled:Boolean){api("goals/$id","PATCH",JSONObject().put("enabled",enabled));sync()}

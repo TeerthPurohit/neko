@@ -94,6 +94,11 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
     fun splitwise(key:String)=action{app.splitwise.connect(key)}
     fun disconnectSplitwise()=action{app.settings.splitwiseKey="";app.settings.remove("splitwise_groups");app.settings.remove("splitwise_expenses");app.ledger.changed()}
     fun send(message:String)=action{app.agent.chat(message);AgentWork.syncNow(app)}
+    fun scanInbox()=action {
+        val found=dev.neko.app.capture.SmsInbox.import(app)
+        note(if(found==0)"No new bank transactions found in the last 90 days of SMS." else "Imported $found bank notice${if(found==1)"" else "s"} as drafts. Review them in the Ledger.")
+        AgentWork.syncNow(app)
+    }
     fun goal(title:String,hour:Int)=action{app.agent.addGoal(title,hour)}
     fun goalEnabled(id:String,value:Boolean)=action{app.agent.pauseGoal(id,value)}
     fun applyProposal(proposal:Proposal)=action {

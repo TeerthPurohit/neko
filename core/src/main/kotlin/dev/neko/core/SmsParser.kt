@@ -4,7 +4,13 @@ data class BankSms(val sender: String, val body: String, val receivedAt: Long)
 interface BankParser { val bank: String; fun accepts(sender: String): Boolean; fun parse(sms: BankSms): Transaction? }
 
 class IndianBankParser(override val bank: String, private val senderCodes: Set<String>) : BankParser {
-    override fun accepts(sender: String): Boolean = senderCodes.any { code -> sender.uppercase().replace(Regex("[^A-Z0-9]"), "").endsWith(code) }
+    // Registered headers look like "JD-ICICIT-S": operator prefix, header, then a TRAI category suffix (S/T/P/G).
+    // Match the header token exactly; the legacy compact form ("VMICICIB") is still accepted when it carries no suffix.
+    override fun accepts(sender: String): Boolean {
+        val tokens = sender.uppercase().split('-', ' ').map { it.replace(Regex("[^A-Z0-9]"), "") }.filter { it.isNotEmpty() }
+        val compact = tokens.joinToString("")
+        return senderCodes.any { code -> tokens.contains(code) || (tokens.size < 3 && compact.endsWith(code)) }
+    }
     override fun parse(sms: BankSms): Transaction? {
         if (!accepts(sms.sender)) return null
         val body = sms.body.replace(Regex("\\s+"), " ").trim()
@@ -48,6 +54,10 @@ class SmsParser(private val parsers: List<BankParser> = listOf(
     IndianBankParser("ICICI", setOf("ICICIB", "ICICIT", "ICICIS")),
     IndianBankParser("IDFC FIRST", setOf("IDFCFB", "IDFCBK", "IDFCFT")),
     IndianBankParser("AU", setOf("AUBANK", "AUSFBK", "AUSFBL")),
+    IndianBankParser("HDFC", setOf("HDFCBK", "HDFCBN", "HDFCBT")),
+    IndianBankParser("SBI", setOf("SBIINB", "SBIUPI", "SBIPSG", "SBICRD", "ATMSBI", "SBMSBI")),
+    IndianBankParser("Axis", setOf("AXISBK", "AXISBN", "AXISCR")),
+    IndianBankParser("Kotak", setOf("KOTAKB", "KOTAKBK", "KOTAKM")),
 )) {
     fun parse(sms: BankSms): Transaction? = parsers.firstNotNullOfOrNull { it.parse(sms) }
 }
