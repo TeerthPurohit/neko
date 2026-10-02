@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-02T06:34:22Z",
+  "title": "Design System: Neko native mascot",
+  "extensions": {
+    "motion": [
+      { "name": "warm-hello-cycle", "value": "3.5s", "purpose": "Restrained native head and viewer-right paw movement from the GLB animation." },
+      { "name": "idle-playback-scale", "value": "0.82", "purpose": "Native model playback speed while idle." },
+      { "name": "replying-playback-scale", "value": "1.12", "purpose": "Native model playback speed while replying." },
+      { "name": "reduced-motion", "value": "pause", "purpose": "Pause the actual model and suppress the speaking halo state; also pause when hidden." }
+    ]
+  },
+  "components": [],
+  "narrative": {
+    "overview": "This record is scoped to the native mascot correction made on 2 October 2026. The user explicitly selected the left white lucky cat in image.png. Its broad smiling face, pointed pink ears, closed smiling eyes, coral cheeks, seated body, raised paw on the viewer's right, green wave bib, red collar with a gold bell, and gold coin are the visual authority. Small discreet glasses carry the app's established character requirement into this adaptation.\n\nThe prior hybrid mascot with oversized cyan goggles was rejected. The current implementation follows the selected reference; this document does not establish user approval of the final adaptation. It records source geometry and behavior, without asserting a final render verdict or choosing a broader product identity.",
+    "keyCharacteristics": [
+      "A broad white face leads the seated silhouette.",
+      "The lucky-cat expression and accessories remain recognizable beneath discreet glasses.",
+      "Actual animated 3D geometry provides gentle head and paw movement.",
+      "Native accessibility and reduced motion remain part of the character stage."
+    ],
+    "rules": [],
+    "dos": [
+      "Do use the selected left white lucky cat in image.png as the mascot authority.",
+      "Do preserve the broad smile, pointed pink ears, coral cheeks, viewer-right raised paw, green wave bib, red collar, gold bell and coin.",
+      "Do keep glasses discreet and the closed smiling eyes readable.",
+      "Do keep native animation subtle and honor reduced motion and accessibility labels.",
+      "Do distinguish the current source implementation from user approval of its rendered adaptation."
+    ],
+    "donts": [
+      "Don't restore the rejected hybrid or oversized cyan goggles.",
+      "Don't replace the native animated GLB with a PNG, picture plane or fallback mascot.",
+      "Don't claim the browser preview's existing still demonstrates the updated GLB.",
+      "Don't infer new product features or a broader visual identity from this mascot correction."
+    ]
+  }
+}
