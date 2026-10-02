@@ -13,52 +13,65 @@ class LedgerRepository(val db: NekoDatabase, val settings: SecureSettings) {
     val changes = MutableStateFlow(0L)
     fun changed() { changes.value = changes.value + 1 }
     suspend fun transactions(): List<Transaction> = withContext(Dispatchers.IO) { db.transactions() }
+    private fun storeRaw(database: android.database.sqlite.SQLiteDatabase, fingerprint: String, sms: BankSms) {
+        database.insertWithOnConflict("raw_sms",null,android.content.ContentValues().apply { put("fingerprint",fingerprint);put("ciphertext",settings.encrypt(JSONObject().put("sender",sms.sender).put("body",sms.body).toString(),"sms:"+fingerprint)) },android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE)
+    }
     suspend fun capture(sms: BankSms): Transaction? = withContext(Dispatchers.IO) {
         val incoming = SmsParser().parse(sms) ?: return@withContext null
         val database=db.writableDatabase;database.beginTransaction()
         try {
-            // This notice was already folded into a UPI payment recorded in Neko (or dropped as its duplicate): never recreate it.
-            if(db.get(incoming.id)==null&&db.hasRawSms(incoming.fingerprint))return@withContext null
-            // A payment started from Neko's Pay button is the same money as its bank SMS: match by UPI reference, else same amount within 30 minutes.
-            val recorded=db.transactions().firstOrNull { it.source==Source.MANUAL&&it.account==UPI_APP_ACCOUNT&&it.direction==incoming.direction&&it.amountPaise==incoming.amountPaise&&it.status!=PaymentStatus.FAILED&&
-                ((incoming.reference!=null&&it.reference==incoming.reference)||(it.reference==null&&kotlin.math.abs(it.occurredAt-incoming.occurredAt)<=1_800_000)) }
-            if(recorded!=null) {
-                db.save(recorded.copy(status=incoming.status,account=incoming.account,reference=incoming.reference?:recorded.reference,updatedAt=System.currentTimeMillis(),revision=recorded.revision+1))
-                database.insertWithOnConflict("raw_sms",null,android.content.ContentValues().apply { put("fingerprint",incoming.fingerprint);put("ciphertext",settings.encrypt(JSONObject().put("sender",sms.sender).put("body",sms.body).toString(),"sms:"+incoming.fingerprint)) },android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE)
-                database.setTransactionSuccessful();changed();return@withContext null
+            // A payment recorded through Neko's Pay button adopts its bank notice's fingerprint, so every later notice for it (and every replay) finds it here.
+            var old=db.get(incoming.id)?:db.getByFingerprint(incoming.fingerprint)
+            if(old==null) {
+                // Same money as a payment started in Neko: match by UPI reference, or by amount + time + the payee named in the notice.
+                val recorded=db.transactions().firstOrNull { it.source==Source.MANUAL&&it.account==UPI_APP_ACCOUNT&&it.direction==incoming.direction&&it.amountPaise==incoming.amountPaise&&it.status!=PaymentStatus.FAILED&&
+                    ((incoming.reference!=null&&it.reference==incoming.reference)||(kotlin.math.abs(it.occurredAt-incoming.occurredAt)<=1_800_000&&UpiPay.samePayee(it.merchant,it.notes,incoming.merchant))) }
+                if(recorded!=null) {
+                    val merged=recorded.copy(fingerprint=incoming.fingerprint,status=if(SmsLifecycle.advances(recorded.status,incoming.status))incoming.status else recorded.status,account=incoming.account,
+                        reference=incoming.reference?:recorded.reference,updatedAt=System.currentTimeMillis(),revision=recorded.revision+1)
+                    db.save(merged);storeRaw(database,incoming.fingerprint,sms)
+                    database.setTransactionSuccessful();changed();return@withContext null // the user started this payment, so no "new transaction" alert
+                }
             }
-            val old=db.get(incoming.id)
-            if(old!=null&&old.status==incoming.status&&old.amountPaise==incoming.amountPaise) { database.setTransactionSuccessful();return@withContext null }
+            val advances=old!=null&&SmsLifecycle.advances(old.status,incoming.status)
+            // Replays and out-of-order notices (inbox catch-up re-reads recent messages) never undo or repeat a status change.
+            if(old!=null&&!advances&&old.amountPaise==incoming.amountPaise&&old.direction==incoming.direction) { database.setTransactionSuccessful();return@withContext null }
             val conflict=old!=null&&(old.amountPaise!=incoming.amountPaise||old.direction!=incoming.direction)
-            val tx=if(old==null)incoming else old.copy(status=incoming.status,review=if(conflict)ReviewStatus.DRAFT else old.review,notes=if(conflict)"Conflicting bank notice. Check encrypted original notices before confirming." else old.notes,updatedAt=System.currentTimeMillis(),revision=old.revision+1)
-            db.save(tx)
-            database.insertWithOnConflict("raw_sms",null,android.content.ContentValues().apply { put("fingerprint",tx.fingerprint);put("ciphertext",settings.encrypt(JSONObject().put("sender",sms.sender).put("body",sms.body).toString(),"sms:"+tx.fingerprint)) },android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE)
+            val tx=if(old==null)incoming else old.copy(status=if(advances)incoming.status else old.status,review=if(conflict)ReviewStatus.DRAFT else old.review,notes=if(conflict)"Conflicting bank notice. Check encrypted original notices before confirming." else old.notes,updatedAt=System.currentTimeMillis(),revision=old.revision+1)
+            db.save(tx);storeRaw(database,tx.fingerprint,sms)
             if(incoming.status==PaymentStatus.REVERSED&&incoming.reference!=null) {
-                db.transactions().filter { it.id!=incoming.id&&it.account==incoming.account&&it.reference==incoming.reference&&it.amountPaise==incoming.amountPaise&&it.direction!=incoming.direction }.forEach { db.save(it.copy(status=PaymentStatus.REVERSED,updatedAt=System.currentTimeMillis(),revision=it.revision+1)) }
+                db.transactions().filter { it.id!=tx.id&&it.account==incoming.account&&it.reference==incoming.reference&&it.amountPaise==incoming.amountPaise&&it.direction!=incoming.direction }.forEach { db.save(it.copy(status=PaymentStatus.REVERSED,updatedAt=System.currentTimeMillis(),revision=it.revision+1)) }
             }
             database.setTransactionSuccessful();changed();tx
         } finally { database.endTransaction() }
     }
+    // Payments started with Neko's Pay button whose outcome is not known yet; the newest is the one the UPI app is about to report on.
+    private fun pendingUpiIds(): List<String> = settings.get("pending_upi").split(',').filter { it.isNotBlank() }
+    private fun addPendingUpi(id: String) = settings.put("pending_upi", (pendingUpiIds() + id).takeLast(5).joinToString(","))
+    private fun removePendingUpi(id: String) { val rest = pendingUpiIds() - id; if (rest.isEmpty()) settings.remove("pending_upi") else settings.put("pending_upi", rest.joinToString(",")) }
+    fun currentPendingUpi(): String? = pendingUpiIds().lastOrNull()
     /** Records a payment the moment the user taps Pay, before the UPI app opens. It stays PENDING (and out of reports) until the result is known. */
     suspend fun startUpi(vpa: String, name: String, amountPaise: Long, note: String): Transaction = withContext(Dispatchers.IO) {
         require(UpiPay.isValidVpa(vpa)) { "Enter a valid UPI ID, like name@bank" }
         val merchant = name.trim().ifEmpty { vpa.trim() }.take(100)
         val tx = Transaction(occurredAt = System.currentTimeMillis(), amountPaise = amountPaise, direction = Direction.DEBIT, account = UPI_APP_ACCOUNT, merchant = merchant,
-            category = LocalClassifier.classify("$merchant $note", Direction.DEBIT), paymentMethod = "UPI", notes = note.trim().ifEmpty { "Paid with UPI to ${vpa.trim()}" }.take(200),
+            category = LocalClassifier.classify("$merchant $note", Direction.DEBIT), paymentMethod = "UPI", notes = ("Paid with UPI to ${vpa.trim()}" + note.trim().takeIf { it.isNotEmpty() }?.let { " · $it" }.orEmpty()).take(240),
             source = Source.MANUAL, review = ReviewStatus.CONFIRMED, status = PaymentStatus.PENDING)
-        db.save(tx);settings.put("pending_upi", tx.id);changed();tx
+        db.save(tx);addPendingUpi(tx.id);changed();tx
     }
     /** Settles a payment from [startUpi]. A bank SMS that already arrived for the same UPI reference is merged in rather than counted twice. */
     suspend fun finishUpi(id: String, status: PaymentStatus, reference: String?): Transaction? = withContext(Dispatchers.IO) {
         val database=db.writableDatabase;database.beginTransaction()
         try {
-            val tx=db.get(id)?:return@withContext null
-            if(tx.status!=PaymentStatus.PENDING)return@withContext tx
+            val tx=db.get(id)
+            if(tx==null||tx.status!=PaymentStatus.PENDING) { removePendingUpi(id);database.setTransactionSuccessful();return@withContext tx }
             val duplicate=reference?.let { ref->db.transactions().firstOrNull { it.id!=id&&it.source==Source.SMS&&it.reference==ref&&it.amountPaise==tx.amountPaise&&it.direction==Direction.DEBIT } }
-            val settled=tx.copy(status=duplicate?.status?:status,reference=reference?:tx.reference,account=duplicate?.account?:tx.account,updatedAt=System.currentTimeMillis(),revision=tx.revision+1)
-            db.save(settled);if(duplicate!=null)db.delete(duplicate.id)
+            val settled=tx.copy(status=if(duplicate!=null&&SmsLifecycle.advances(status,duplicate.status))duplicate.status else status,reference=reference?:tx.reference,
+                account=duplicate?.account?:tx.account,fingerprint=duplicate?.fingerprint?:tx.fingerprint,updatedAt=System.currentTimeMillis(),revision=tx.revision+1)
+            if(duplicate!=null)db.delete(duplicate.id) // remove first: the settled payment takes over its fingerprint, which must stay unique
+            db.save(settled)
+            removePendingUpi(id)
             database.setTransactionSuccessful()
-            settings.remove("pending_upi")
             changed();settled
         } finally { database.endTransaction() }
     }

@@ -9,7 +9,7 @@ class IndianBankParser(override val bank: String, private val senderCodes: Set<S
     override fun accepts(sender: String): Boolean {
         val tokens = sender.uppercase().split('-', ' ').map { it.replace(Regex("[^A-Z0-9]"), "") }.filter { it.isNotEmpty() }
         val compact = tokens.joinToString("")
-        return senderCodes.any { code -> tokens.contains(code) || (tokens.size < 3 && compact.endsWith(code)) }
+        return senderCodes.any { code -> tokens.contains(code) || (tokens.size == 1 && compact.length <= code.length + 2 && compact.endsWith(code)) }
     }
     override fun parse(sms: BankSms): Transaction? {
         if (!accepts(sms.sender)) return null

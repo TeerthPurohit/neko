@@ -22,6 +22,19 @@ object UpiPay {
         return "upi://pay?pa=${encode(vpa.trim())}&pn=${encode(payee)}&am=${Money.decimal(amountPaise)}&cu=INR" + if (message.isEmpty()) "" else "&tn=${encode(message)}"
     }
 
+    /**
+     * Whether a bank notice's counterparty is the payee of a payment recorded through Neko. Used when the UPI reference is unavailable,
+     * so an unrelated payment of the same amount a few minutes later is not swallowed. [recordedNotes] holds "... UPI to <upi id>".
+     */
+    fun samePayee(recordedMerchant: String, recordedNotes: String, smsMerchant: String): Boolean {
+        val sms = smsMerchant.lowercase()
+        if (sms.isBlank() || sms.contains("unknown counterparty")) return false
+        val keys = mutableSetOf<String>()
+        Regex("UPI to (\\S+@\\S+)").find(recordedNotes)?.groupValues?.get(1)?.lowercase()?.let { keys += it; keys += it.substringBefore('@') }
+        keys += recordedMerchant.lowercase().split(Regex("[^a-z0-9]+"))
+        return keys.any { it.length >= 4 && sms.contains(it) }
+    }
+
     fun parseResponse(raw: String?): Result {
         val fields = raw.orEmpty().split('&').mapNotNull { part -> part.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0].trim().lowercase() to it[1].trim() } }.toMap()
         val status = when (fields["status"]?.uppercase()) {

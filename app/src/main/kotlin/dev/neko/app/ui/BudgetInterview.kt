@@ -13,6 +13,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.neko.core.Budgeting
 import dev.neko.core.Category
+import dev.neko.core.Money
 
 /**
  * Neko interviews the user about this month's money, one question at a time: total budget, income, then a limit per category.
@@ -43,7 +44,7 @@ import dev.neko.core.Category
     fun goBack() {
         if (step == 0) return
         step -= 1; problem = null
-        input = valueAt(step).takeIf { it > 0 }?.let { (it / 100).toString() } ?: ""
+        input = valueAt(step).takeIf { it > 0 }?.let { if (it % 100 == 0L) (it / 100).toString() else Money.decimal(it) } ?: ""
     }
 
     val question = when {

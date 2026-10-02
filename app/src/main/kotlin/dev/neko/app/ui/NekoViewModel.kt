@@ -38,8 +38,8 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
         if(observer?.isActive==true)return
         observer=viewModelScope.launch {
             // A payment left PENDING by an earlier session (app closed while the UPI app was open) is asked about once on start.
-            val unfinished=withContext(Dispatchers.IO){app.settings.get("pending_upi")}
-            if(unfinished.isNotBlank())mutable.update{it.copy(upiPromptId=unfinished)}
+            val unfinished=withContext(Dispatchers.IO){app.ledger.currentPendingUpi()}
+            if(unfinished!=null)mutable.update{it.copy(upiPromptId=unfinished)}
             app.ledger.changes.collect { reload() }
         }
     }
@@ -93,7 +93,7 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
     fun saveBudgetPlan(total:Long,income:Long,limits:Map<Category,Long>)=action {
         require(total in 1..Budgeting.MAX_PAISE){"Enter a budget between ₹1 and ₹1,00,00,000"}
         withContext(Dispatchers.IO) {
-            limits.forEach{(category,amount)->app.ledger.db.saveBudget(Budget(category,amount))}
+            app.ledger.db.replaceBudgets(Budgeting.categoriesToAsk,limits)
             app.settings.put("month_budget_paise",total.toString());app.settings.put("month_budget_month",java.time.YearMonth.now(Ledger.india).toString())
             app.settings.put("month_income_paise",income.toString())
             app.ledger.changed()
@@ -112,7 +112,7 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
     }
     /** [raw] is the response string from the UPI app (for example `Status=SUCCESS&ApprovalRefNo=...`), or null if it returned nothing. */
     fun finishUpi(raw:String?)=background {
-        val id=app.settings.get("pending_upi");if(id.isBlank())return@background
+        val id=app.ledger.currentPendingUpi()?:return@background
         val result=UpiPay.parseResponse(raw)
         when(result.status) {
             UpiPay.Status.SUCCESS->{app.ledger.finishUpi(id,PaymentStatus.POSTED,result.reference);note("Payment recorded.");AgentWork.syncNow(app)}

@@ -21,7 +21,7 @@ class LedgerTest {
         }
     }
     @Test fun `lookalike senders are still rejected`() {
-        listOf("FRIEND", "JD-XICICIBX-S", "9876543210", "+919876543210", "JD-ICICIBANKS", "JD-PROMO-S").forEach { sender ->
+        listOf("FRIEND", "XYZHDFCBK", "JD-XICICIBX-S", "9876543210", "+919876543210", "JD-ICICIBANKS", "JD-PROMO-S").forEach { sender ->
             assertNull(SmsParser().parse(BankSms(sender, "Rs.250.00 debited from A/c XX1234 to ZOMATO", now)), "sender $sender must not parse")
         }
     }
