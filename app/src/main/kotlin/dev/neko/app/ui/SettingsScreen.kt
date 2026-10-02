@@ -13,7 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import android.content.Intent
 import android.net.Uri
 
-@Composable fun SettingsScreen(state:NekoState,model:NekoViewModel,smsGranted:Boolean,inboxGranted:Boolean,onBack:()->Unit,onPermissions:()->Unit,onFirebase:()->Unit){
+@Composable fun SettingsScreen(state:NekoState,model:NekoViewModel,smsGranted:Boolean,inboxGranted:Boolean,onImportStatement:()->Unit,onBack:()->Unit,onPermissions:()->Unit,onFirebase:()->Unit){
     val context=LocalContext.current
     var pairing by remember{mutableStateOf(false)};var splitwise by remember{mutableStateOf(false)};var consent by remember{mutableStateOf(false)};var erase by remember{mutableStateOf(false)};var modelKey by remember{mutableStateOf(false)}
     LazyColumn(contentPadding=PaddingValues(NekoTokens.Page),verticalArrangement=Arrangement.spacedBy(24.dp)){
@@ -27,6 +27,7 @@ import android.net.Uri
             Text("Transaction capture",style=MaterialTheme.typography.titleLarge);StatusPill(if(smsGranted)"SMS permission granted"else"Permission needed",smsGranted)
             Text("ICICI, IDFC FIRST, AU, HDFC, SBI, Axis, and Kotak bank notices are parsed on your phone. Uncertain entries stay as drafts. Neko never asks for your bank login, PIN, or OTP.",color=MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onPermissions){Text("Manage capture permissions")}
+            OutlinedButton(onImportStatement){Text("Import a bank statement (CSV or PDF)")}
             if(inboxGranted)OutlinedButton({model.scanInbox()},enabled=!state.busy){Text("Scan last 90 days of SMS")}
             else Text("Allow SMS access to also import bank notices that arrived before Neko was set up.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             val context=androidx.compose.ui.platform.LocalContext.current

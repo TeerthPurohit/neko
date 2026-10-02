@@ -28,6 +28,8 @@ data class NekoState(
     val monthBudgetPaise:Long=0,val monthIncomePaise:Long=0,val previousBudgetPaise:Long=0,
     /** A UPI payment whose outcome the payment app did not report; the user is asked whether it went through. */
     val upiPromptId:String?=null,
+    /** What the last statement import did; shown once so the user can confirm the imported spending. */
+    val statementResult:dev.neko.app.data.ImportResult?=null,
 )
 
 class NekoViewModel(private val app:NekoApplication):ViewModel() {
@@ -100,6 +102,20 @@ class NekoViewModel(private val app:NekoApplication):ViewModel() {
         }
         AgentWork.syncNow(app);note("Budget saved. I'll keep watch and tell you when you're getting close.")
     }
+    /** Reads a bank statement (CSV or PDF) on the phone and adds what is new to the ledger as drafts. [onSuccess] closes the import dialog; a failure keeps it open for another try. */
+    fun importStatement(uri:android.net.Uri,account:String,password:String,thisMonthOnly:Boolean,onSuccess:()->Unit)=action {
+        val parsed=dev.neko.app.data.StatementReader.read(app,uri,password)
+        val chosen=if(thisMonthOnly)parsed.inMonth(java.time.YearMonth.now(Ledger.india)) else parsed
+        if(chosen.rows.isEmpty())error("That statement has no transactions for this month. Turn off \"This month only\" to import all of it.")
+        val result=app.ledger.importStatement(chosen.rows,account.trim().ifEmpty{"Bank statement"}.take(40),parsed.skipped)
+        mutable.update{it.copy(statementResult=result)}
+        onSuccess();AgentWork.syncNow(app)
+    }
+    fun confirmStatementSpending()=action {
+        val result=mutable.value.statementResult;mutable.update{it.copy(statementResult=null)}
+        if(result!=null){val count=app.ledger.confirmImportedSpending(result.newDebitIds);note("Confirmed $count spending entr${if(count==1)"y" else "ies"}. Money received is left for you to review.");AgentWork.syncNow(app)}
+    }
+    fun dismissStatementResult(){mutable.update{it.copy(statementResult=null)}}
     /** Saves the payment as pending first, then hands the `upi://pay` link to [launch] so a crash or a back-press never loses the record. */
     // Payments are never skipped because another action (such as waiting for a chat reply) is still running.
     private fun background(block:suspend ()->Unit){

@@ -34,6 +34,7 @@ import java.util.Locale
     onPermissions:()->Unit,
     onSaveBudgetPlan:(Long,Long,Map<Category,Long>)->Unit,
     onPay:()->Unit,
+    onImportStatement:()->Unit,
 ) {
     var prompt by rememberSaveable { mutableStateOf("") }
     var interviewing by rememberSaveable { mutableStateOf(false) }
@@ -63,6 +64,7 @@ import java.util.Locale
                     )
                 }
             }
+            IconButton(onImportStatement,modifier=Modifier.size(NekoTokens.Touch)) { Icon(Icons.Outlined.UploadFile,"Import a bank statement") }
             IconButton(onPay,modifier=Modifier.size(NekoTokens.Touch)) { Icon(Icons.Outlined.Payments,"Pay with UPI") }
             IconButton(onSettings,modifier=Modifier.size(NekoTokens.Touch)) { Icon(Icons.Outlined.Tune,"Settings") }
         }

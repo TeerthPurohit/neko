@@ -27,6 +27,10 @@ import dev.neko.core.Transaction
         if(result[Manifest.permission.READ_SMS]==true){inboxGranted=true;model.scanInbox()}
     }
     var paying by rememberSaveable{mutableStateOf(false)}
+    var statementFile by rememberSaveable{mutableStateOf<String?>(null)}
+    val statementPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)statementFile=uri.toString()}
+    // Banks label CSV exports inconsistently, so offer every plausible type rather than only text/csv.
+    val pickStatement={statementPicker.launch(arrayOf("text/csv","text/comma-separated-values","application/csv","text/tab-separated-values","text/plain","application/pdf","application/vnd.ms-excel","application/octet-stream"))}
     val upi=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){result->
         val data=result.data
         // UPI apps return either one "response" string or separate extras; both carry Status and ApprovalRefNo.
@@ -50,12 +54,12 @@ import dev.neko.core.Transaction
             if(state.busy)LinearProgressIndicator(Modifier.fillMaxWidth(),color=MaterialTheme.colorScheme.primary)
             if(state.loading)Box(Modifier.fillMaxSize(),contentAlignment=androidx.compose.ui.Alignment.Center){CircularProgressIndicator()}
             else when(page){
-                "Home"->HomeScreen(state,smsGranted,onSettings={page="Settings"},onLedger={page="Ledger"},onSend=model::send,onPermissions=smsPermissions,onSaveBudgetPlan=model::saveBudgetPlan,onPay={paying=true})
+                "Home"->HomeScreen(state,smsGranted,onSettings={page="Settings"},onLedger={page="Ledger"},onSend=model::send,onPermissions=smsPermissions,onSaveBudgetPlan=model::saveBudgetPlan,onPay={paying=true},onImportStatement=pickStatement)
                 "Ledger"->LedgerScreen(state,onAdd={adding=true},onTransaction={selectedId=it.id},onExport={export.launch("neko-ledger.csv")})
                 "Activity"->AgentScreen(state,model,onSettings={page="Settings"})
                 "Insights"->InsightsScreen(state,model)
                 "Splits"->SplitsScreen(state,model,onSettings={page="Settings"})
-                "Settings"->SettingsScreen(state,model,smsGranted,inboxGranted,onBack={page="Home"},onPermissions=smsPermissions,onFirebase={firebase.launch(arrayOf("application/json","text/plain"))})
+                "Settings"->SettingsScreen(state,model,smsGranted,inboxGranted,onBack={page="Home"},onPermissions=smsPermissions,onImportStatement=pickStatement,onFirebase={firebase.launch(arrayOf("application/json","text/plain"))})
             }
         }
     }
@@ -66,6 +70,10 @@ import dev.neko.core.Transaction
             catch(_:Exception){model.note("No UPI app was found on this phone.")}
         }
     })
+    statementFile?.let{file->StatementImportDialog(state.busy,onDismiss={statementFile=null},onImport={account,password,thisMonthOnly->
+        model.importStatement(android.net.Uri.parse(file),account,password,thisMonthOnly){statementFile=null}
+    })}
+    state.statementResult?.let{result->StatementResultDialog(result,onConfirmSpending=model::confirmStatementSpending,onDismiss=model::dismissStatementResult)}
     val unsettled=state.upiPromptId?.let{id->state.transactions.find{it.id==id&&it.status==dev.neko.core.PaymentStatus.PENDING}}
     if(unsettled!=null)AlertDialog(onDismissRequest={model.resolveUpi(null)},title={Text("Did the payment go through?")},
         text={Text("${rupees(unsettled.amountPaise)} to ${unsettled.merchant}. If you're not sure, Neko will settle it when your bank's SMS arrives.")},

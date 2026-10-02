@@ -11,7 +11,7 @@ import java.util.UUID
 enum class Direction { DEBIT, CREDIT }
 enum class PaymentStatus { POSTED, PENDING, FAILED, REVERSED }
 enum class ReviewStatus { DRAFT, CONFIRMED }
-enum class Source { SMS, MANUAL, AA }
+enum class Source { SMS, MANUAL, AA, STATEMENT }
 enum class SpendingTreatment {
     AUTO, REVIEW_REQUIRED, PERSONAL_SPENDING, FRIEND_REIMBURSEMENT, FUNDING, INCOME,
     FD_PRINCIPAL, INVESTMENT_PRINCIPAL, INVESTMENT_RETURN, REFUND, TEMPORARY_MOVEMENT
